@@ -1,0 +1,63 @@
+import 'dotenv/config';
+import Fastify from 'fastify';
+import { auditLogger } from './lib/audit/log.js';
+import { closePool, getPool } from './lib/db/client.js';
+import { runMigrations } from './lib/db/migrate.js';
+import { logger } from './lib/logger.js';
+import { closeQueue } from './lib/queue/client.js';
+import { registerScheduledJobs, stopScheduledJobs } from './jobs/_registry.js';
+import { slackPostMessageSkill } from './skills/slack/post-message.js';
+import { SkillRegistry } from './skills/_registry.js';
+import { startBoltApp, stopBoltApp } from './slack/bot.js';
+
+const startTime = Date.now();
+const version = process.env.APP_VERSION ?? '0.1.0';
+const port = Number(process.env.PORT ?? 3000);
+
+const registry = new SkillRegistry();
+registry.register(slackPostMessageSkill);
+
+let fastify: ReturnType<typeof Fastify> | null = null;
+
+async function main(): Promise<void> {
+  await runMigrations();
+  getPool();
+
+  fastify = Fastify({ logger: false });
+  fastify.get('/health', async () => ({
+    status: 'ok',
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    version,
+  }));
+
+  await fastify.listen({ port, host: '0.0.0.0' });
+  logger.info({ port, version }, 'HTTP server listening');
+
+  await startBoltApp();
+  logger.info('Slack Bolt app started (Socket Mode)');
+
+  await registerScheduledJobs(registry);
+  logger.info('Job scheduler started');
+
+  void auditLogger;
+}
+
+async function shutdown(signal: string): Promise<void> {
+  logger.info({ signal }, 'Shutting down');
+  await stopScheduledJobs();
+  await stopBoltApp();
+  if (fastify) {
+    await fastify.close();
+  }
+  await closeQueue();
+  await closePool();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
+
+main().catch((err: unknown) => {
+  logger.error({ err }, 'Fatal startup error');
+  process.exit(1);
+});

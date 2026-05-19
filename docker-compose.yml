@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ops
+      POSTGRES_PASSWORD: dev_admin_password
+      POSTGRES_DB: opsmanager
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ops -d opsmanager']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: ['--config', '/app/config.yaml', '--port', '4000']
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-dev_master_key_change_in_prod}
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:4000/health/liveliness\")"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  app:
+    build: .
+    ports:
+      - '3100:3000'
+    env_file:
+      - .env
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgres://ops_app:dev_password@postgres:5432/opsmanager
+      DATABASE_ADMIN_URL: postgres://ops:dev_admin_password@postgres:5432/opsmanager
+      REDIS_URL: redis://redis:6379
+      LITELLM_PROXY_URL: http://litellm:4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

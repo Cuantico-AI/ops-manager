@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ops
+          POSTGRES_PASSWORD: dev_admin_password
+          POSTGRES_DB: opsmanager
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ops -d opsmanager"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://ops_app:dev_password@localhost:5432/opsmanager
+      DATABASE_ADMIN_URL: postgres://ops:dev_admin_password@localhost:5432/opsmanager
+      REDIS_URL: redis://localhost:6379
+      BYPASS_APPROVAL: 'true'
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run migrate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
