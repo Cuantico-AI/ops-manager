@@ -1,8 +1,10 @@
 # Operations Manager
 
-Autonomous fleet operations service for Cuantico Inc. — event-driven ops across GHL, Assistable, and n8n with Slack as the human surface. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full framework.
+Autonomous fleet operations service for Cuantico Inc. — event-driven ops across GHL, Assistable, and n8n with Slack as the human surface. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full framework. Phase 2 scope: [docs/phases/PHASE-2.md](./docs/phases/PHASE-2.md).
 
 ## Local dev quickstart
+
+> **Local dev only.** This laptop `docker compose` stack is for development. The canonical/production deployment runs on the DigitalOcean droplet — see [Deploy](#deploy).
 
 1. Clone the repo and install Node 20 (`nvm use`).
 2. Copy env template and fill in Slack + Anthropic keys:
@@ -70,9 +72,26 @@ npm test
 
 ## Deploy
 
-Manual deploy script: [scripts/deploy.sh](./scripts/deploy.sh). Set `DROPLET_IP` and SSH key, then run on the n8n droplet (host port **3100**).
+**Canonical deployment:** the DigitalOcean droplet at **`147.182.131.74`**, repo checked out at **`/opt/ops-manager`** (tracks `main`). The laptop `docker compose` stack [above](#local-dev-quickstart) is **local dev only** — this droplet is the source of truth for running ops-manager.
 
-For production Postgres, point `DATABASE_URL` at your DO managed cluster (`db-postgresql-nyc1-84612`) — no code changes required.
+Deploy is pull-to-deploy:
+
+```bash
+ssh -i ~/.ssh/ops_manager_droplet root@147.182.131.74
+cd /opt/ops-manager
+git pull origin main
+docker compose up -d --build      # rebuilds app; migrations run on app boot
+```
+
+[scripts/deploy.sh](./scripts/deploy.sh) wraps SSH + pull + build + health check (set `DROPLET_IP` / `SSH_KEY` / `DEPLOY_PATH`). App listens on host port **3100** → container **3000**.
+
+**First-time setup on a fresh droplet:** `.env` is gitignored, so `git pull` never delivers it. Generate it on the droplet with [scripts/scaffold-env.sh](./scripts/scaffold-env.sh), which renders [scripts/env.template](./scripts/env.template) with fresh `openssl`-generated DB + LiteLLM secrets (written `0600 root:root`) and leaves `REPLACE_ME_*` placeholders for `ANTHROPIC_API_KEY` and the `SLACK_*` tokens to fill in by hand:
+
+```bash
+cd /opt/ops-manager && bash scripts/scaffold-env.sh   # writes /opt/ops-manager/.env
+```
+
+For production Postgres you can instead point `DATABASE_URL` at a DO managed cluster (e.g. `db-postgresql-nyc1-84612`) — no code changes required; the current droplet runs the containerized Postgres from `docker-compose.yml`.
 
 ## Production notes
 
