@@ -3,7 +3,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: ops
-      POSTGRES_PASSWORD: dev_admin_password
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
       POSTGRES_DB: opsmanager
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -28,7 +28,7 @@ services:
     command: ['--config', '/app/config.yaml', '--port', '4000']
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-dev_master_key_change_in_prod}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     healthcheck:
       test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:4000/health/liveliness\")"']
       interval: 10s
@@ -44,8 +44,8 @@ services:
       - .env
     environment:
       PORT: '3000'
-      DATABASE_URL: postgres://ops_app:dev_password@postgres:5432/opsmanager
-      DATABASE_ADMIN_URL: postgres://ops:dev_admin_password@postgres:5432/opsmanager
+      DATABASE_URL: postgres://ops_app:${POSTGRES_APP_PASSWORD}@postgres:5432/opsmanager
+      DATABASE_ADMIN_URL: postgres://ops:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/opsmanager
       REDIS_URL: redis://redis:6379
       LITELLM_PROXY_URL: http://litellm:4000
     depends_on:
