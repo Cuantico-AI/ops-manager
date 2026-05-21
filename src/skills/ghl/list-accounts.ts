@@ -8,7 +8,7 @@ import {
 import type { Skill, SkillContext } from '../_types.js';
 
 export const listAccountsInputSchema = z.object({
-  syncFromGoogleSheet: z.boolean().default(false),
+  syncFromGoogleSheet: z.boolean().optional(),
   csvUrl: z.string().url().optional(),
 });
 
@@ -27,15 +27,16 @@ export const ghlListAccountsSkill: Skill<ListAccountsInput, ListAccountsOutput> 
   schema: listAccountsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListAccountsOutput> {
     const actor = ctx.agentId;
+    const shouldSync = input.syncFromGoogleSheet === true;
 
     await ctx.audit.log({
       jobId: ctx.jobId,
       actor,
       action: 'ghl.list-accounts',
-      target: input.syncFromGoogleSheet ? 'google-sheet-roster' : 'accounts',
+      target: shouldSync ? 'google-sheet-roster' : 'accounts',
       mutated: false,
       input: {
-        syncFromGoogleSheet: input.syncFromGoogleSheet,
+        syncFromGoogleSheet: shouldSync,
         rosterSourceConfigured: Boolean(
           input.csvUrl ??
           process.env.GOOGLE_SHEET_ROSTER_CSV_URL ??
@@ -44,7 +45,7 @@ export const ghlListAccountsSkill: Skill<ListAccountsInput, ListAccountsOutput> 
       },
     });
 
-    const output = input.syncFromGoogleSheet
+    const output = shouldSync
       ? await syncAndListAccounts(input.csvUrl)
       : { accounts: await listStoredAccounts() };
 
@@ -52,7 +53,7 @@ export const ghlListAccountsSkill: Skill<ListAccountsInput, ListAccountsOutput> 
       jobId: ctx.jobId,
       actor,
       action: 'ghl.list-accounts',
-      target: input.syncFromGoogleSheet ? 'google-sheet-roster' : 'accounts',
+      target: shouldSync ? 'google-sheet-roster' : 'accounts',
       mutated: false,
       output: {
         accountCount: output.accounts.length,

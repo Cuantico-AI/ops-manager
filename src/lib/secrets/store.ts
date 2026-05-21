@@ -61,9 +61,7 @@ export class PostgresSecretStore implements SecretStore {
     const encrypted = Buffer.concat([cipher.update(input.plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
 
-    const executor = client ?? { query };
-    await executor.query(
-      `INSERT INTO secrets (id, kind, encrypted_value, iv, auth_tag, key_version, metadata, updated_at)
+    const sql = `INSERT INTO secrets (id, kind, encrypted_value, iv, auth_tag, key_version, metadata, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT (id) DO UPDATE SET
          kind = EXCLUDED.kind,
@@ -72,17 +70,22 @@ export class PostgresSecretStore implements SecretStore {
          auth_tag = EXCLUDED.auth_tag,
          key_version = EXCLUDED.key_version,
          metadata = EXCLUDED.metadata,
-         updated_at = NOW()`,
-      [
-        input.id,
-        input.kind,
-        encrypted.toString('base64'),
-        iv.toString('base64'),
-        authTag.toString('base64'),
-        KEY_VERSION,
-        JSON.stringify(input.metadata ?? {}),
-      ],
-    );
+         updated_at = NOW()`;
+    const params = [
+      input.id,
+      input.kind,
+      encrypted.toString('base64'),
+      iv.toString('base64'),
+      authTag.toString('base64'),
+      KEY_VERSION,
+      JSON.stringify(input.metadata ?? {}),
+    ];
+
+    if (client) {
+      await client.query(sql, params);
+    } else {
+      await query(sql, params);
+    }
 
     return `secret:${input.id}`;
   }
