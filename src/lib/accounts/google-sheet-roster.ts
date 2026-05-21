@@ -101,8 +101,9 @@ export async function fetchRosterCsv(
 
   const res = await fetch(toGoogleSheetCsvExportUrl(url));
   if (!res.ok) {
+    const body = await safeReadResponseBody(res);
     throw new ExternalServiceError(
-      `Google Sheet roster fetch failed: ${res.status} ${res.statusText}`,
+      `Google Sheet roster fetch failed: ${formatHttpError(res, body)}`,
       'GOOGLE_SHEET_ROSTER_FETCH_FAILED',
     );
   }
@@ -290,8 +291,9 @@ async function fetchRosterRowsFromGoogleSheetsApi(
   });
 
   if (!res.ok) {
+    const body = await safeReadResponseBody(res);
     throw new ExternalServiceError(
-      `Google Sheets API roster fetch failed: ${res.status} ${res.statusText}`,
+      `Google Sheets API roster fetch failed: ${formatHttpError(res, body)}`,
       'GOOGLE_SHEETS_API_ROSTER_FETCH_FAILED',
     );
   }
@@ -327,8 +329,9 @@ async function getGoogleSheetsAccessToken(config: GoogleSheetsApiConfig): Promis
   });
 
   if (!res.ok) {
+    const body = await safeReadResponseBody(res);
     throw new ExternalServiceError(
-      `Google Sheets service account auth failed: ${res.status} ${res.statusText}`,
+      `Google Sheets service account auth failed: ${formatHttpError(res, body)}`,
       'GOOGLE_SHEETS_AUTH_FAILED',
     );
   }
@@ -368,6 +371,23 @@ function base64UrlJson(value: Record<string, unknown>): string {
 
 function base64Url(value: Buffer): string {
   return value.toString('base64url');
+}
+
+async function safeReadResponseBody(res: Response): Promise<string> {
+  try {
+    return await res.text();
+  } catch {
+    return '';
+  }
+}
+
+function formatHttpError(res: Response, body: string): string {
+  const trimmedBody = body.trim();
+  if (!trimmedBody) {
+    return `${res.status} ${res.statusText}`;
+  }
+
+  return `${res.status} ${res.statusText}: ${trimmedBody.slice(0, 500)}`;
 }
 
 function normalizeRosterRecord(record: Record<string, string>, rowNumber: number): RosterRow {
