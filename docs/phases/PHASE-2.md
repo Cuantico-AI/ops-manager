@@ -49,6 +49,7 @@ skill output, metadata, and audit logs report only whether a token is stored.
   - optionally syncs from Google Sheets
 - encrypted `secrets` table for PIT token storage
 - `/ops accounts` Slack summary with token-present/token-missing status only
+- `/ops sync-roster` Slack command to load the private Sheet into `accounts`/`secrets`
 
 ## Remaining Phase 2 work
 

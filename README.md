@@ -76,6 +76,8 @@ npm test
 contains PIT tokens, keep it private and use the service-account env vars documented in
 [docs/phases/PHASE-2.md](./docs/phases/PHASE-2.md). Do not publish or paste a
 token-bearing Sheet URL; public CSV URLs are only appropriate for tokenless rosters.
+After deployment, run `/ops sync-roster` in Slack to sync the Sheet, then `/ops accounts`
+to view token-present/token-missing status.
 
 ## Deploy
 
