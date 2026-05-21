@@ -10,11 +10,12 @@ const GOOGLE_SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readon
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 const columnAliases = {
-  name: ['name', 'account name', 'client', 'client name'],
+  name: ['name', 'account name', 'client', 'client name', 'subaccount name'],
   status: ['status', 'account status'],
   ghlLocationId: ['ghl location id', 'location id', 'ghl_location_id', 'locationid'],
   ghlPitToken: [
     'ghl pit token',
+    'pit',
     'pit token',
     'personal integration token',
     'personal integration token (pit)',
