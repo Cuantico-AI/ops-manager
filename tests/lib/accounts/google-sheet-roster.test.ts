@@ -32,4 +32,16 @@ Complete Lending,loc_123,pit_secret,"wf_1, wf_2"
       },
     ]);
   });
+
+  it('recognizes live roster subaccount and PIT headers', () => {
+    const rows = parseRosterCsv(`Subaccount Name,GHL Location ID,PIT
+Complete Lending,loc_123,pit_secret
+`);
+
+    expect(rows[0]).toMatchObject({
+      name: 'Complete Lending',
+      ghlLocationId: 'loc_123',
+      ghlPitToken: 'pit_secret',
+    });
+  });
 });
