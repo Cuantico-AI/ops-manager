@@ -20,6 +20,7 @@
     "@slack/bolt": "^4.4.0",
     "@slack/web-api": "^7.9.1",
     "bullmq": "^5.44.0",
+    "csv-parse": "^6.2.1",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "ioredis": "^5.4.2",

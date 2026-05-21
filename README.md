@@ -70,6 +70,15 @@ npm test
 3. Register in `src/server.ts` via `registry.register(...)`.
 4. Add tests under `tests/skills/`.
 
+## Phase 2 roster sync
+
+`ghl.list-accounts` can sync the account roster from Google Sheets. If the Sheet
+contains PIT tokens, keep it private and use the service-account env vars documented in
+[docs/phases/PHASE-2.md](./docs/phases/PHASE-2.md). Do not publish or paste a
+token-bearing Sheet URL; public CSV URLs are only appropriate for tokenless rosters.
+After deployment, run `/ops sync-roster` in Slack to sync the Sheet, then `/ops accounts`
+to view token-present/token-missing status.
+
 ## Deploy
 
 **Canonical deployment:** the DigitalOcean droplet at **`147.182.131.74`**, repo checked out at **`/opt/ops-manager`** (tracks `main`). The laptop `docker compose` stack [above](#local-dev-quickstart) is **local dev only** — this droplet is the source of truth for running ops-manager.

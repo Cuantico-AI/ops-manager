@@ -6,6 +6,7 @@ import { runMigrations } from './lib/db/migrate.js';
 import { logger } from './lib/logger.js';
 import { closeQueue } from './lib/queue/client.js';
 import { registerScheduledJobs, stopScheduledJobs } from './jobs/_registry.js';
+import { ghlListAccountsSkill } from './skills/ghl/list-accounts.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
 import { startBoltApp, stopBoltApp } from './slack/bot.js';
@@ -16,6 +17,7 @@ const port = Number(process.env.PORT ?? 3000);
 
 const registry = new SkillRegistry();
 registry.register(slackPostMessageSkill);
+registry.register(ghlListAccountsSkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;
 
