@@ -1,13 +1,14 @@
-import { createCipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type pg from 'pg';
 import { query } from '../db/client.js';
-import { ValidationError } from '../errors.js';
+import { NotFoundError, ValidationError } from '../errors.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const KEY_VERSION = 'v1';
 
 export interface SecretStore {
   upsertSecret(input: UpsertSecretInput, client?: pg.PoolClient): Promise<string>;
+  getSecret(idOrRef: string, opts?: GetSecretOptions, client?: pg.PoolClient): Promise<string>;
 }
 
 export interface UpsertSecretInput {
@@ -15,6 +16,10 @@ export interface UpsertSecretInput {
   kind: string;
   plaintext: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface GetSecretOptions {
+  kind?: string;
 }
 
 function decodeMasterKey(raw: string): Buffer {
@@ -89,4 +94,46 @@ export class PostgresSecretStore implements SecretStore {
 
     return `secret:${input.id}`;
   }
+
+  async getSecret(
+    idOrRef: string,
+    opts: GetSecretOptions = {},
+    client?: pg.PoolClient,
+  ): Promise<string> {
+    const id = normalizeSecretId(idOrRef);
+    const sql =
+      'SELECT kind, encrypted_value, iv, auth_tag, key_version FROM secrets WHERE id = $1 LIMIT 1';
+    const result = client
+      ? await client.query<SecretRow>(sql, [id])
+      : await query<SecretRow>(sql, [id]);
+    const row = result.rows[0];
+    if (!row) {
+      throw new NotFoundError(`Secret not found: ${id}`);
+    }
+    if (opts.kind && row.kind !== opts.kind) {
+      throw new ValidationError(`Secret ${id} has kind ${row.kind}, expected ${opts.kind}`);
+    }
+    if (row.key_version !== KEY_VERSION) {
+      throw new ValidationError(`Unsupported secret key version: ${row.key_version}`);
+    }
+
+    const decipher = createDecipheriv(ALGORITHM, this.key, Buffer.from(row.iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(row.auth_tag, 'base64'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(row.encrypted_value, 'base64')),
+      decipher.final(),
+    ]).toString('utf8');
+  }
+}
+
+interface SecretRow {
+  kind: string;
+  encrypted_value: string;
+  iv: string;
+  auth_tag: string;
+  key_version: string;
+}
+
+function normalizeSecretId(idOrRef: string): string {
+  return idOrRef.startsWith('secret:') ? idOrRef.slice('secret:'.length) : idOrRef;
 }

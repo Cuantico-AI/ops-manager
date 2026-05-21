@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { App } from '@slack/bolt';
 import {
   listStoredAccounts,
@@ -5,6 +6,16 @@ import {
   type AccountSummary,
   type RosterSyncSummary,
 } from '../lib/accounts/google-sheet-roster.js';
+import { auditLogger } from '../lib/audit/log.js';
+import { approvalGate } from '../lib/approval/gate.js';
+import { query } from '../lib/db/client.js';
+import { llmClient } from '../lib/llm/client.js';
+import {
+  checkPitTokenInputSchema,
+  ghlCheckPitTokenSkill,
+  type CheckPitTokenOutput,
+} from '../skills/ghl/check-pit-token.js';
+import type { SkillContext } from '../skills/_types.js';
 
 const startTime = Date.now();
 
@@ -49,16 +60,34 @@ export function registerCommands(app: App): void {
       return;
     }
 
+    if (subcommand === 'check-tokens' || subcommand === 'check-pit-tokens') {
+      try {
+        const output = await runManualGhlTokenCheck();
+        await respond({
+          response_type: 'ephemeral',
+          text: formatGhlTokenCheckSummary(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `GHL token check failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, or /ops sync-roster`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, or /ops check-tokens`,
     });
   });
 }
 
 export function formatAccountsSummary(accounts: AccountSummary[]): string {
   const activeCount = accounts.filter((account) => account.status === 'active').length;
-  const missingTokenCount = accounts.filter((account) => account.pitTokenStatus === 'missing').length;
+  const missingTokenCount = accounts.filter(
+    (account) => account.pitTokenStatus === 'missing',
+  ).length;
 
   return [
     `Known accounts: ${accounts.length} (${activeCount} active)`,
@@ -78,7 +107,9 @@ export function formatRosterSyncSummary(
   summary: RosterSyncSummary,
   accounts: AccountSummary[],
 ): string {
-  const missingTokenCount = accounts.filter((account) => account.pitTokenStatus === 'missing').length;
+  const missingTokenCount = accounts.filter(
+    (account) => account.pitTokenStatus === 'missing',
+  ).length;
 
   return [
     'GHL roster sync complete.',
@@ -90,4 +121,72 @@ export function formatRosterSyncSummary(
     `Known accounts: ${accounts.length}`,
     `GHL PIT tokens missing: ${missingTokenCount}`,
   ].join('\n');
+}
+
+export function formatGhlTokenCheckSummary(output: CheckPitTokenOutput): string {
+  const attention = output.results.filter((result) => result.status !== 'valid');
+
+  return [
+    'GHL PIT token check complete.',
+    `Checked: ${output.summary.total}`,
+    `Valid: ${output.summary.valid}`,
+    `Needs attention: ${output.summary.needsAttention}`,
+    `Invalid: ${output.summary.invalid}`,
+    `Forbidden/scope issue: ${output.summary.forbidden}`,
+    `Location not found: ${output.summary.notFound}`,
+    `Missing token: ${output.summary.missingToken}`,
+    `Missing location: ${output.summary.missingLocation}`,
+    `Secret errors: ${output.summary.secretError}`,
+    `Unreachable: ${output.summary.unreachable}`,
+    attention.length ? '' : 'All checked accounts are valid.',
+    ...attention.slice(0, 20).map((result) => `• ${result.accountName} — ${result.status}`),
+    attention.length > 20 ? `…and ${attention.length - 20} more needing attention` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function runManualGhlTokenCheck(): Promise<CheckPitTokenOutput> {
+  const jobId = randomUUID();
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops check-tokens' }),
+      'running',
+      JSON.stringify({ includeInactive: false }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const input = checkPitTokenInputSchema.parse({ includeInactive: false });
+    const output = await ghlCheckPitTokenSkill.execute(input, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({ summary: output.summary }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
 }
