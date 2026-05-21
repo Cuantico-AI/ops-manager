@@ -51,10 +51,35 @@ skill output, metadata, and audit logs report only whether a token is stored.
 - `/ops accounts` Slack summary with token-present/token-missing status only
 - `/ops sync-roster` Slack command to load the private Sheet into `accounts`/`secrets`
 
+## GHL PIT token health
+
+`ghl.check-pit-token` validates stored PIT tokens against LeadConnector v2:
+
+- `GET https://services.leadconnectorhq.com/locations/{locationId}`
+- `Authorization: Bearer <encrypted PIT after decrypt>`
+- `Version: 2021-07-28`
+
+Statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `valid` | LeadConnector returned 2xx |
+| `invalid` | LeadConnector returned 401 |
+| `forbidden` | LeadConnector returned 403; token may lack scope/access |
+| `not_found` | LeadConnector returned 404 for the stored location ID |
+| `unreachable` | Network timeout, 5xx, or other transient failure |
+| `missing-token` | Account has no PIT token reference |
+| `missing-location` | Account has no GHL location ID |
+| `secret-error` | Encrypted PIT token could not be read/decrypted |
+
+Operators can run `/ops check-tokens` on demand. A scheduled daily job runs on
+`GHL_TOKEN_HEALTH_CRON` (default `15 13 * * *`) and posts a summary to
+`SLACK_ALERTS_CHANNEL`. Results are stored on each account as `ghl_token_status`,
+`ghl_token_checked_at`, and `metadata.ghlTokenHealth`.
+
 ## Remaining Phase 2 work
 
-1. `ghl.check-pit-token` daily health job and Slack summary.
-2. `ghl.list-pipelines` and `ghl.list-opportunities` weekly snapshot.
-3. `ghl.list-workflows` and `ghl.list-custom-fields` monthly inventory.
-4. `/ops ghl-snapshot <account-name>` per-account report.
+1. `ghl.list-pipelines` and `ghl.list-opportunities` weekly snapshot.
+2. `ghl.list-workflows` and `ghl.list-custom-fields` monthly inventory.
+3. `/ops ghl-snapshot <account-name>` per-account report.
 

@@ -78,6 +78,8 @@ contains PIT tokens, keep it private and use the service-account env vars docume
 token-bearing Sheet URL; public CSV URLs are only appropriate for tokenless rosters.
 After deployment, run `/ops sync-roster` in Slack to sync the Sheet, then `/ops accounts`
 to view token-present/token-missing status.
+Run `/ops check-tokens` to validate stored GHL PIT tokens against LeadConnector; the
+daily scheduled check uses `GHL_TOKEN_HEALTH_CRON`.
 
 ## Deploy
 

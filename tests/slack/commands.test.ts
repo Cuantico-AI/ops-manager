@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { formatAccountsSummary, formatRosterSyncSummary } from '../../src/slack/commands.js';
-import type { AccountSummary, RosterSyncSummary } from '../../src/lib/accounts/google-sheet-roster.js';
+import {
+  formatAccountsSummary,
+  formatGhlTokenCheckSummary,
+  formatRosterSyncSummary,
+} from '../../src/slack/commands.js';
+import type {
+  AccountSummary,
+  RosterSyncSummary,
+} from '../../src/lib/accounts/google-sheet-roster.js';
 
 const baseAccount = {
   id: 'account-1',
@@ -57,5 +64,46 @@ describe('Slack command formatters', () => {
     expect(text).not.toContain('secret:');
     expect(text).not.toContain('pit_');
   });
-});
 
+  it('formats GHL token checks without exposing token values', () => {
+    const text = formatGhlTokenCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 2,
+        valid: 1,
+        invalid: 1,
+        forbidden: 0,
+        notFound: 0,
+        missingToken: 0,
+        missingLocation: 0,
+        secretError: 0,
+        unreachable: 0,
+        needsAttention: 1,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Complete Lending',
+          ghlLocationId: 'loc_123',
+          status: 'valid',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+        },
+        {
+          accountId: 'account-2',
+          accountName: 'Bad Token Account',
+          ghlLocationId: 'loc_456',
+          status: 'invalid',
+          httpStatus: 401,
+          message: 'pit_secret should stay out of Slack',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(text).toContain('GHL PIT token check complete.');
+    expect(text).toContain('Needs attention: 1');
+    expect(text).toContain('• Bad Token Account — invalid');
+    expect(text).not.toContain('pit_secret');
+    expect(text).not.toContain('secret:');
+  });
+});
