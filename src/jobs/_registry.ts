@@ -3,6 +3,11 @@ import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
+  getGhlConfigInventoryCron,
+  GHL_CONFIG_INVENTORY_QUEUE,
+  runGhlConfigInventory,
+} from './ghl-config-inventory.js';
+import {
   getGhlPipelineSnapshotCron,
   GHL_PIPELINE_SNAPSHOT_QUEUE,
   runGhlPipelineSnapshot,
@@ -17,6 +22,7 @@ import { getHeartbeatCron, HEARTBEAT_QUEUE, runHeartbeat } from './heartbeat.js'
 let heartbeatWorker: Worker | null = null;
 let ghlTokenHealthWorker: Worker | null = null;
 let ghlPipelineSnapshotWorker: Worker | null = null;
+let ghlConfigInventoryWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -81,6 +87,28 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   ghlPipelineSnapshotWorker = getWorker(GHL_PIPELINE_SNAPSHOT_QUEUE, async () => {
     await runGhlPipelineSnapshot(registry);
   });
+
+  const ghlConfigInventoryQueue = getQueue(GHL_CONFIG_INVENTORY_QUEUE);
+  const ghlConfigInventoryCron = getGhlConfigInventoryCron();
+
+  await ghlConfigInventoryQueue.obliterate({ force: true });
+  await ghlConfigInventoryQueue.add(
+    'ghl-config-inventory-tick',
+    {},
+    {
+      repeat: { pattern: ghlConfigInventoryCron },
+      jobId: 'ghl-config-inventory-repeatable',
+    },
+  );
+
+  logger.info(
+    { cron: ghlConfigInventoryCron, queue: GHL_CONFIG_INVENTORY_QUEUE },
+    'Registered GHL config inventory cron job',
+  );
+
+  ghlConfigInventoryWorker = getWorker(GHL_CONFIG_INVENTORY_QUEUE, async () => {
+    await runGhlConfigInventory(registry);
+  });
 }
 
 export async function stopScheduledJobs(): Promise<void> {
@@ -95,5 +123,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (ghlPipelineSnapshotWorker) {
     await ghlPipelineSnapshotWorker.close();
     ghlPipelineSnapshotWorker = null;
+  }
+  if (ghlConfigInventoryWorker) {
+    await ghlConfigInventoryWorker.close();
+    ghlConfigInventoryWorker = null;
   }
 }

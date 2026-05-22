@@ -16,6 +16,12 @@ import {
   type CheckPitTokenOutput,
 } from '../skills/ghl/check-pit-token.js';
 import { formatGhlAccountSnapshot } from '../lib/ghl/snapshot.js';
+import { formatGhlAccountInventory } from '../lib/ghl/inventory.js';
+import {
+  ghlInventoryInputSchema,
+  ghlInventorySkill,
+  type GhlInventoryOutput,
+} from '../skills/ghl/inventory.js';
 import {
   ghlSnapshotInputSchema,
   ghlSnapshotSkill,
@@ -108,9 +114,33 @@ export function registerCommands(app: App): void {
       return;
     }
 
+    if (subcommand === 'ghl-inventory') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops ghl-inventory <account name>',
+        });
+        return;
+      }
+
+      try {
+        const inventory = await runManualGhlInventory(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatGhlAccountInventory(inventory),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `GHL inventory failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, or /ops ghl-snapshot`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -226,6 +256,54 @@ async function runManualGhlTokenCheck(accountQuery?: string): Promise<CheckPitTo
     await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
       'succeeded',
       JSON.stringify({ summary: output.summary }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualGhlInventory(accountQuery: string): Promise<GhlInventoryOutput> {
+  const jobId = randomUUID();
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops ghl-inventory', accountQuery }),
+      'running',
+      JSON.stringify({ accountQuery }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const input = ghlInventoryInputSchema.parse({ accountQuery });
+    const output = await ghlInventorySkill.execute(input, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        workflowCount: output.workflows.length,
+        customFieldCount: output.customFields.length,
+      }),
       jobId,
     ]);
     return output;
