@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatAccountsSummary,
+  formatAssistableOAuthCheckSummary,
   formatGhlTokenCheckSummary,
   formatRosterSyncSummary,
 } from '../../src/slack/commands.js';
@@ -142,5 +143,47 @@ describe('Slack command formatters', () => {
     expect(text).toContain('valid means this PIT can read');
     expect(text).not.toContain('pit_');
     expect(text).not.toContain('secret:');
+  });
+
+  it('formats Assistable OAuth checks without exposing API keys', () => {
+    const text = formatAssistableOAuthCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 2,
+        connected: 1,
+        disconnected: 1,
+        notFound: 0,
+        authError: 0,
+        missingSubaccountId: 0,
+        unreachable: 0,
+        needsAttention: 1,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Complete Lending',
+          assistableLocationId: 'loc_123',
+          locationSource: 'ghl-location-id',
+          status: 'connected',
+          httpStatus: 200,
+          checkedAt: '2026-05-21T00:00:00.000Z',
+        },
+        {
+          accountId: 'account-2',
+          accountName: 'Bad OAuth Account',
+          assistableLocationId: 'loc_456',
+          locationSource: 'ghl-location-id',
+          status: 'disconnected',
+          httpStatus: 403,
+          message: 'assistable_secret should stay out of Slack',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(text).toContain('Assistable OAuth check complete.');
+    expect(text).toContain('Needs attention: 1');
+    expect(text).toContain('• Bad OAuth Account — disconnected');
+    expect(text).not.toContain('assistable_secret');
   });
 });

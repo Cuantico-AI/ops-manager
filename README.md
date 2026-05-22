@@ -85,6 +85,9 @@ Run `/ops ghl-snapshot Complete Lending` for a per-account pipeline/opportunity 
 The weekly fleet summary runs on `GHL_PIPELINE_SNAPSHOT_CRON`.
 Run `/ops ghl-inventory Complete Lending` for a per-account workflow/custom-field report.
 The monthly fleet summary runs on `GHL_CONFIG_INVENTORY_CRON`.
+Run `/ops check-assistable` to validate Assistable GHL OAuth connections; the daily
+scheduled check uses `ASSISTABLE_OAUTH_HEALTH_CRON`. Phase 3 scope:
+[docs/phases/PHASE-3.md](./docs/phases/PHASE-3.md).
 
 ## Deploy
 

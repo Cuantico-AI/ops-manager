@@ -3,6 +3,11 @@ import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
+  getAssistableOAuthHealthCron,
+  ASSISTABLE_OAUTH_HEALTH_QUEUE,
+  runAssistableOAuthHealth,
+} from './assistable-oauth-health.js';
+import {
   getGhlConfigInventoryCron,
   GHL_CONFIG_INVENTORY_QUEUE,
   runGhlConfigInventory,
@@ -23,6 +28,7 @@ let heartbeatWorker: Worker | null = null;
 let ghlTokenHealthWorker: Worker | null = null;
 let ghlPipelineSnapshotWorker: Worker | null = null;
 let ghlConfigInventoryWorker: Worker | null = null;
+let assistableOAuthHealthWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -109,6 +115,28 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   ghlConfigInventoryWorker = getWorker(GHL_CONFIG_INVENTORY_QUEUE, async () => {
     await runGhlConfigInventory(registry);
   });
+
+  const assistableOAuthHealthQueue = getQueue(ASSISTABLE_OAUTH_HEALTH_QUEUE);
+  const assistableOAuthHealthCron = getAssistableOAuthHealthCron();
+
+  await assistableOAuthHealthQueue.obliterate({ force: true });
+  await assistableOAuthHealthQueue.add(
+    'assistable-oauth-health-tick',
+    {},
+    {
+      repeat: { pattern: assistableOAuthHealthCron },
+      jobId: 'assistable-oauth-health-repeatable',
+    },
+  );
+
+  logger.info(
+    { cron: assistableOAuthHealthCron, queue: ASSISTABLE_OAUTH_HEALTH_QUEUE },
+    'Registered Assistable OAuth health cron job',
+  );
+
+  assistableOAuthHealthWorker = getWorker(ASSISTABLE_OAUTH_HEALTH_QUEUE, async () => {
+    await runAssistableOAuthHealth(registry);
+  });
 }
 
 export async function stopScheduledJobs(): Promise<void> {
@@ -127,5 +155,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (ghlConfigInventoryWorker) {
     await ghlConfigInventoryWorker.close();
     ghlConfigInventoryWorker = null;
+  }
+  if (assistableOAuthHealthWorker) {
+    await assistableOAuthHealthWorker.close();
+    assistableOAuthHealthWorker = null;
   }
 }

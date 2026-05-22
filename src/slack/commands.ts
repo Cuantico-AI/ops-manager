@@ -11,6 +11,11 @@ import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
 import { llmClient } from '../lib/llm/client.js';
 import {
+  checkAssistableOAuthInputSchema,
+  assistableCheckOAuthStatusSkill,
+  type CheckAssistableOAuthOutput,
+} from '../skills/assistable/check-oauth-status.js';
+import {
   checkPitTokenInputSchema,
   ghlCheckPitTokenSkill,
   type CheckPitTokenOutput,
@@ -90,6 +95,22 @@ export function registerCommands(app: App): void {
       return;
     }
 
+    if (subcommand === 'check-assistable' || subcommand === 'check-assistable-oauth') {
+      try {
+        const output = await runManualAssistableOAuthCheck(args || undefined);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatAssistableOAuthCheckSummary(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Assistable OAuth check failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     if (subcommand === 'ghl-snapshot') {
       if (!args) {
         await respond({
@@ -140,7 +161,7 @@ export function registerCommands(app: App): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -225,6 +246,94 @@ export function formatGhlTokenCheckSummary(output: CheckPitTokenOutput): string 
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+export function formatAssistableOAuthCheckSummary(output: CheckAssistableOAuthOutput): string {
+  const attention = output.results.filter((result) => result.status !== 'connected');
+  const onlyResult = output.results.length === 1 ? output.results[0] : undefined;
+
+  if (onlyResult) {
+    return [
+      'Assistable OAuth check complete.',
+      `Account: ${onlyResult.accountName}`,
+      `Status: ${onlyResult.status}`,
+      `Assistable location ID: ${onlyResult.assistableLocationId ?? 'missing'}`,
+      onlyResult.locationSource ? `Location source: ${onlyResult.locationSource}` : '',
+      `HTTP status: ${onlyResult.httpStatus ?? 'n/a'}`,
+      onlyResult.status === 'connected'
+        ? 'Note: connected means Assistable returned 2xx for the location probe; re-check in Assistable if CRM actions still fail.'
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return [
+    'Assistable OAuth check complete.',
+    `Checked: ${output.summary.total}`,
+    `Connected: ${output.summary.connected}`,
+    `Needs attention: ${output.summary.needsAttention}`,
+    `Disconnected: ${output.summary.disconnected}`,
+    `Not found: ${output.summary.notFound}`,
+    `Missing location ID: ${output.summary.missingSubaccountId}`,
+    `Auth errors: ${output.summary.authError}`,
+    `Unreachable: ${output.summary.unreachable}`,
+    attention.length ? '' : 'All checked accounts are connected.',
+    ...attention.slice(0, 20).map((result) => `• ${result.accountName} — ${result.status}`),
+    attention.length > 20 ? `…and ${attention.length - 20} more needing attention` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function runManualAssistableOAuthCheck(
+  accountQuery?: string,
+): Promise<CheckAssistableOAuthOutput> {
+  const jobId = randomUUID();
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops check-assistable', accountQuery }),
+      'running',
+      JSON.stringify({ includeInactive: false, accountQuery }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const input = checkAssistableOAuthInputSchema.parse({
+      includeInactive: false,
+      accountQuery,
+    });
+    const output = await assistableCheckOAuthStatusSkill.execute(input, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({ summary: output.summary }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
 }
 
 async function runManualGhlTokenCheck(accountQuery?: string): Promise<CheckPitTokenOutput> {
