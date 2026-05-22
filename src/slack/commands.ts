@@ -9,6 +9,7 @@ import {
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
+import { formatFleetDailyHealthOverview, type FleetDailyHealthChecks } from '../lib/health/fleet-daily-summary.js';
 import { llmClient } from '../lib/llm/client.js';
 import {
   checkN8nWorkflowHealthInputSchema,
@@ -37,6 +38,7 @@ import {
   ghlSnapshotSkill,
   type GhlSnapshotOutput,
 } from '../skills/ghl/snapshot.js';
+import type { N8nAccountWorkflowCheckResult } from '../lib/accounts/n8n-workflow-health.js';
 import type { SkillContext } from '../skills/_types.js';
 
 const startTime = Date.now();
@@ -132,6 +134,22 @@ export function registerCommands(app: App): void {
       return;
     }
 
+    if (subcommand === 'fleet-health' || subcommand === 'daily-health') {
+      try {
+        const checks = await runManualFleetHealthCheck();
+        await respond({
+          response_type: 'ephemeral',
+          text: formatFleetHealthCheckSummary(checks),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Fleet health check failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     if (subcommand === 'ghl-snapshot') {
       if (!args) {
         await respond({
@@ -182,7 +200,7 @@ export function registerCommands(app: App): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -308,8 +326,41 @@ export function formatAssistableOAuthCheckSummary(output: CheckAssistableOAuthOu
     .join('\n');
 }
 
+export function formatN8nWorkflowAttentionLine(result: N8nAccountWorkflowCheckResult): string {
+  if (result.status === 'missing-workflow-ids') {
+    return `• ${result.accountName} — no workflow IDs in roster`;
+  }
+
+  const badWorkflows = result.workflows.filter((workflow) =>
+    ['failing', 'stale', 'not_found', 'unreachable', 'inactive'].includes(workflow.status),
+  );
+  const detail = badWorkflows
+    .slice(0, 2)
+    .map((workflow) => `${workflow.workflowId}: ${workflow.status}`)
+    .join('; ');
+  return `• ${result.accountName} — ${detail || result.status}`;
+}
+
+export function formatFleetHealthCheckSummary(checks: FleetDailyHealthChecks): string {
+  return [
+    formatFleetDailyHealthOverview(checks),
+    '',
+    '---',
+    '',
+    formatGhlTokenCheckSummary(checks.ghl),
+    '',
+    '---',
+    '',
+    formatAssistableOAuthCheckSummary(checks.assistable),
+    '',
+    '---',
+    '',
+    formatN8nWorkflowCheckSummary(checks.n8n),
+  ].join('\n');
+}
+
 export function formatN8nWorkflowCheckSummary(output: CheckN8nWorkflowHealthOutput): string {
-  const attention = output.results.filter((result) => result.status === 'needs-attention');
+  const attention = output.results.filter((result) => result.status !== 'healthy');
   const onlyResult = output.results.length === 1 ? output.results[0] : undefined;
 
   if (onlyResult) {
@@ -347,20 +398,72 @@ export function formatN8nWorkflowCheckSummary(output: CheckN8nWorkflowHealthOutp
     `Not found: ${output.summary.notFoundWorkflows}`,
     `Unreachable: ${output.summary.unreachableWorkflows}`,
     attention.length ? '' : 'All checked accounts with n8n workflows are healthy.',
-    ...attention.slice(0, 20).map((result) => {
-      const badWorkflows = result.workflows.filter((workflow) =>
-        ['failing', 'stale', 'not_found', 'unreachable'].includes(workflow.status),
-      );
-      const detail = badWorkflows
-        .slice(0, 2)
-        .map((workflow) => `${workflow.workflowName}: ${workflow.status}`)
-        .join('; ');
-      return `• ${result.accountName} — ${detail || result.status}`;
-    }),
+    output.summary.notFoundWorkflows > 0 && output.summary.missingWorkflowIds === 0
+      ? 'Tracked workflow IDs were not found in n8n. Verify real workflow IDs in the roster Sheet.'
+      : '',
+    ...attention.slice(0, 20).map((result) => formatN8nWorkflowAttentionLine(result)),
     attention.length > 20 ? `…and ${attention.length - 20} more needing attention` : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+async function runManualFleetHealthCheck(): Promise<FleetDailyHealthChecks> {
+  const jobId = randomUUID();
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops fleet-health' }),
+      'running',
+      JSON.stringify({ includeInactive: false }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const checkInput = { includeInactive: false };
+    const [ghl, assistable, n8n] = await Promise.all([
+      ghlCheckPitTokenSkill.execute(checkPitTokenInputSchema.parse(checkInput), ctx),
+      assistableCheckOAuthStatusSkill.execute(
+        checkAssistableOAuthInputSchema.parse(checkInput),
+        ctx,
+      ),
+      n8nCheckWorkflowHealthSkill.execute(checkN8nWorkflowHealthInputSchema.parse(checkInput), ctx),
+    ]);
+
+    const checks = { ghl, assistable, n8n };
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        ghl: ghl.summary,
+        assistable: assistable.summary,
+        n8n: n8n.summary,
+      }),
+      jobId,
+    ]);
+    return checks;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
 }
 
 async function runManualN8nWorkflowCheck(

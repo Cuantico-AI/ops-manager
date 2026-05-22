@@ -4,6 +4,7 @@ import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
+import { shouldPostIndividualHealthAlert } from './health-alerts.js';
 import { formatGhlTokenCheckSummary } from '../slack/commands.js';
 import {
   checkPitTokenInputSchema,
@@ -55,13 +56,15 @@ export async function runGhlTokenHealth(registry: SkillRegistry): Promise<void> 
     const checkInput = checkPitTokenInputSchema.parse({ includeInactive: false });
     const output = await checkSkill.execute(checkInput, ctx);
 
-    const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
-    const postSkill = registry.get('slack.post-message');
-    const postInput = postMessageInputSchema.parse({
-      channel,
-      text: formatGhlTokenCheckSummary(output),
-    });
-    await postSkill.execute(postInput, ctx);
+    if (shouldPostIndividualHealthAlert()) {
+      const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
+      const postSkill = registry.get('slack.post-message');
+      const postInput = postMessageInputSchema.parse({
+        channel,
+        text: formatGhlTokenCheckSummary(output),
+      });
+      await postSkill.execute(postInput, ctx);
+    }
 
     await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
       'succeeded',

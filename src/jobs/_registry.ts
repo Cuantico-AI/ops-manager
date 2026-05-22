@@ -1,7 +1,13 @@
 import type { Worker } from 'bullmq';
+import { isFleetDailyHealthEnabled } from '../lib/health/fleet-daily-summary.js';
 import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
+import {
+  getFleetDailyHealthCron,
+  FLEET_DAILY_HEALTH_QUEUE,
+  runFleetDailyHealth,
+} from './fleet-daily-health.js';
 import {
   getN8nWorkflowHealthCron,
   N8N_WORKFLOW_HEALTH_QUEUE,
@@ -35,6 +41,7 @@ let ghlPipelineSnapshotWorker: Worker | null = null;
 let ghlConfigInventoryWorker: Worker | null = null;
 let assistableOAuthHealthWorker: Worker | null = null;
 let n8nWorkflowHealthWorker: Worker | null = null;
+let fleetDailyHealthWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -56,27 +63,95 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
     await runHeartbeat(registry);
   });
 
-  const ghlTokenHealthQueue = getQueue(GHL_TOKEN_HEALTH_QUEUE);
-  const ghlTokenHealthCron = getGhlTokenHealthCron();
+  if (isFleetDailyHealthEnabled()) {
+    const fleetDailyHealthQueue = getQueue(FLEET_DAILY_HEALTH_QUEUE);
+    const fleetDailyHealthCron = getFleetDailyHealthCron();
 
-  await ghlTokenHealthQueue.obliterate({ force: true });
-  await ghlTokenHealthQueue.add(
-    'ghl-token-health-tick',
-    {},
-    {
-      repeat: { pattern: ghlTokenHealthCron },
-      jobId: 'ghl-token-health-repeatable',
-    },
-  );
+    await fleetDailyHealthQueue.obliterate({ force: true });
+    await fleetDailyHealthQueue.add(
+      'fleet-daily-health-tick',
+      {},
+      {
+        repeat: { pattern: fleetDailyHealthCron },
+        jobId: 'fleet-daily-health-repeatable',
+      },
+    );
 
-  logger.info(
-    { cron: ghlTokenHealthCron, queue: GHL_TOKEN_HEALTH_QUEUE },
-    'Registered GHL token health cron job',
-  );
+    logger.info(
+      { cron: fleetDailyHealthCron, queue: FLEET_DAILY_HEALTH_QUEUE },
+      'Registered fleet daily health cron job',
+    );
 
-  ghlTokenHealthWorker = getWorker(GHL_TOKEN_HEALTH_QUEUE, async () => {
-    await runGhlTokenHealth(registry);
-  });
+    fleetDailyHealthWorker = getWorker(FLEET_DAILY_HEALTH_QUEUE, async () => {
+      await runFleetDailyHealth(registry);
+    });
+  } else {
+    const ghlTokenHealthQueue = getQueue(GHL_TOKEN_HEALTH_QUEUE);
+    const ghlTokenHealthCron = getGhlTokenHealthCron();
+
+    await ghlTokenHealthQueue.obliterate({ force: true });
+    await ghlTokenHealthQueue.add(
+      'ghl-token-health-tick',
+      {},
+      {
+        repeat: { pattern: ghlTokenHealthCron },
+        jobId: 'ghl-token-health-repeatable',
+      },
+    );
+
+    logger.info(
+      { cron: ghlTokenHealthCron, queue: GHL_TOKEN_HEALTH_QUEUE },
+      'Registered GHL token health cron job',
+    );
+
+    ghlTokenHealthWorker = getWorker(GHL_TOKEN_HEALTH_QUEUE, async () => {
+      await runGhlTokenHealth(registry);
+    });
+
+    const assistableOAuthHealthQueue = getQueue(ASSISTABLE_OAUTH_HEALTH_QUEUE);
+    const assistableOAuthHealthCron = getAssistableOAuthHealthCron();
+
+    await assistableOAuthHealthQueue.obliterate({ force: true });
+    await assistableOAuthHealthQueue.add(
+      'assistable-oauth-health-tick',
+      {},
+      {
+        repeat: { pattern: assistableOAuthHealthCron },
+        jobId: 'assistable-oauth-health-repeatable',
+      },
+    );
+
+    logger.info(
+      { cron: assistableOAuthHealthCron, queue: ASSISTABLE_OAUTH_HEALTH_QUEUE },
+      'Registered Assistable OAuth health cron job',
+    );
+
+    assistableOAuthHealthWorker = getWorker(ASSISTABLE_OAUTH_HEALTH_QUEUE, async () => {
+      await runAssistableOAuthHealth(registry);
+    });
+
+    const n8nWorkflowHealthQueue = getQueue(N8N_WORKFLOW_HEALTH_QUEUE);
+    const n8nWorkflowHealthCron = getN8nWorkflowHealthCron();
+
+    await n8nWorkflowHealthQueue.obliterate({ force: true });
+    await n8nWorkflowHealthQueue.add(
+      'n8n-workflow-health-tick',
+      {},
+      {
+        repeat: { pattern: n8nWorkflowHealthCron },
+        jobId: 'n8n-workflow-health-repeatable',
+      },
+    );
+
+    logger.info(
+      { cron: n8nWorkflowHealthCron, queue: N8N_WORKFLOW_HEALTH_QUEUE },
+      'Registered n8n workflow health cron job',
+    );
+
+    n8nWorkflowHealthWorker = getWorker(N8N_WORKFLOW_HEALTH_QUEUE, async () => {
+      await runN8nWorkflowHealth(registry);
+    });
+  }
 
   const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
   const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
@@ -121,50 +196,6 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   ghlConfigInventoryWorker = getWorker(GHL_CONFIG_INVENTORY_QUEUE, async () => {
     await runGhlConfigInventory(registry);
   });
-
-  const assistableOAuthHealthQueue = getQueue(ASSISTABLE_OAUTH_HEALTH_QUEUE);
-  const assistableOAuthHealthCron = getAssistableOAuthHealthCron();
-
-  await assistableOAuthHealthQueue.obliterate({ force: true });
-  await assistableOAuthHealthQueue.add(
-    'assistable-oauth-health-tick',
-    {},
-    {
-      repeat: { pattern: assistableOAuthHealthCron },
-      jobId: 'assistable-oauth-health-repeatable',
-    },
-  );
-
-  logger.info(
-    { cron: assistableOAuthHealthCron, queue: ASSISTABLE_OAUTH_HEALTH_QUEUE },
-    'Registered Assistable OAuth health cron job',
-  );
-
-  assistableOAuthHealthWorker = getWorker(ASSISTABLE_OAUTH_HEALTH_QUEUE, async () => {
-    await runAssistableOAuthHealth(registry);
-  });
-
-  const n8nWorkflowHealthQueue = getQueue(N8N_WORKFLOW_HEALTH_QUEUE);
-  const n8nWorkflowHealthCron = getN8nWorkflowHealthCron();
-
-  await n8nWorkflowHealthQueue.obliterate({ force: true });
-  await n8nWorkflowHealthQueue.add(
-    'n8n-workflow-health-tick',
-    {},
-    {
-      repeat: { pattern: n8nWorkflowHealthCron },
-      jobId: 'n8n-workflow-health-repeatable',
-    },
-  );
-
-  logger.info(
-    { cron: n8nWorkflowHealthCron, queue: N8N_WORKFLOW_HEALTH_QUEUE },
-    'Registered n8n workflow health cron job',
-  );
-
-  n8nWorkflowHealthWorker = getWorker(N8N_WORKFLOW_HEALTH_QUEUE, async () => {
-    await runN8nWorkflowHealth(registry);
-  });
 }
 
 export async function stopScheduledJobs(): Promise<void> {
@@ -191,5 +222,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (n8nWorkflowHealthWorker) {
     await n8nWorkflowHealthWorker.close();
     n8nWorkflowHealthWorker = null;
+  }
+  if (fleetDailyHealthWorker) {
+    await fleetDailyHealthWorker.close();
+    fleetDailyHealthWorker = null;
   }
 }
