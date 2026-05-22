@@ -103,6 +103,22 @@ N8N_API_KEY=
 # N8N_WORKFLOW_HEALTH_CRON=45 13 * * *
 ```
 
+## Unified daily fleet health
+
+When `FLEET_DAILY_HEALTH_ENABLED` is true (default), ops-manager runs one daily job
+instead of three separate GHL/Assistable/n8n alert crons:
+
+- Job: `fleet-daily-health`
+- Cron: `FLEET_DAILY_HEALTH_CRON` (default `0 14 * * *`)
+- Slack: one parent post to `SLACK_ALERTS_CHANNEL` with a fleet rollup, then GHL,
+  Assistable, and n8n detail replies in the same thread
+
+Operators can run `/ops fleet-health` on demand for the same combined report in one
+ephemeral Slack message.
+
+Set `FLEET_DAILY_HEALTH_ENABLED=false` to restore the separate daily alert crons
+(`GHL_TOKEN_HEALTH_CRON`, `ASSISTABLE_OAUTH_HEALTH_CRON`, `N8N_WORKFLOW_HEALTH_CRON`).
+
 ## Remaining Phase 3 work
 
-1. Unified daily health post combining GHL + Assistable + n8n in one Slack thread
+None — Phase 3 is complete once this ships.

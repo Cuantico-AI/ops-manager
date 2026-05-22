@@ -6,6 +6,7 @@ import type { Skill, SkillContext } from '../_types.js';
 export const postMessageInputSchema = z.object({
   channel: z.string().min(1),
   text: z.string().min(1),
+  threadTs: z.string().min(1).optional(),
 });
 
 export type PostMessageInput = z.infer<typeof postMessageInputSchema>;
@@ -33,6 +34,7 @@ export const slackPostMessageSkill: Skill<PostMessageInput, PostMessageOutput> =
     const result = await client.chat.postMessage({
       channel: input.channel,
       text: input.text,
+      thread_ts: input.threadTs,
     });
 
     if (!result.ok || !result.ts) {

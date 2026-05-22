@@ -273,7 +273,88 @@ describe('Slack command formatters', () => {
     });
 
     expect(text).toContain('Failing workflows: 1');
-    expect(text).toContain('Bad Workflow Account — Client Sync: failing');
+    expect(text).toContain('Bad Workflow Account — wf_2: failing');
     expect(text).not.toContain('n8n_secret');
+  });
+
+  it('calls out missing n8n workflow IDs in roster', () => {
+    const text = formatN8nWorkflowCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 2,
+        healthy: 1,
+        needsAttention: 0,
+        missingWorkflowIds: 1,
+        inactiveWorkflows: 0,
+        failingWorkflows: 0,
+        staleWorkflows: 0,
+        notFoundWorkflows: 0,
+        unreachableWorkflows: 0,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Healthy Account',
+          status: 'healthy',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [],
+        },
+        {
+          accountId: 'account-2',
+          accountName: 'No Workflow Account',
+          status: 'missing-workflow-ids',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [],
+        },
+      ],
+    });
+
+    expect(text).toContain('Missing workflow IDs: 1');
+    expect(text).toContain('No Workflow Account — no workflow IDs in roster');
+  });
+
+  it('warns when tracked n8n workflow IDs are not found', () => {
+    const text = formatN8nWorkflowCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 2,
+        healthy: 1,
+        needsAttention: 1,
+        missingWorkflowIds: 0,
+        inactiveWorkflows: 0,
+        failingWorkflows: 0,
+        staleWorkflows: 0,
+        notFoundWorkflows: 1,
+        unreachableWorkflows: 0,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Healthy Account',
+          status: 'healthy',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [],
+        },
+        {
+          accountId: 'account-2',
+          accountName: 'Bad ID Account',
+          status: 'needs-attention',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [
+            {
+              workflowId: 'missing-workflow-ids',
+              workflowName: 'missing-workflow-ids',
+              active: false,
+              status: 'not_found',
+              recentExecutions: 0,
+              recentErrors: 0,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(text).toContain('Tracked workflow IDs were not found in n8n.');
+    expect(text).toContain('Bad ID Account — missing-workflow-ids: not_found');
   });
 });
