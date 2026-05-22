@@ -117,7 +117,7 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 
 Requires LiteLLM + `ANTHROPIC_API_KEY`. Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
 
-**Auto QA (slice 2):** point Assistable post-call webhooks at `POST /webhooks/assistable/post-call` and set `QA_AUTO_REVIEW_ENABLED=true`. Haiku reviews 1.5% random eligible calls plus 100% of negative/error/failed-task calls; Sonnet escalates Haiku failures. See Phase 5 doc for env vars.
+**Auto QA (slice 2):** point Assistable post-call webhooks at `POST /webhooks/assistable/post-call` and set `QA_AUTO_REVIEW_ENABLED=true`. Reviews are stored on job records; Slack alerts are **off by default** (set `QA_REVIEW_SLACK_ENABLED=true` only if you want them). See Phase 5 doc for env vars.
 
 ## Deploy
 

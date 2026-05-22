@@ -54,7 +54,7 @@ Policy (designed for ~1M calls/month):
 | Random sample | 1.5% of eligible calls (`QA_REVIEW_SAMPLE_RATE=0.015`) |
 | Always review | Negative sentiment, negative tags, `ai_call_error_*` tags, failed task completion |
 | Skip | Under 90s, voicemail/machine/no-answer/busy tags, missing transcript/location |
-| Slack alerts | Flagged reviews only (negative, error, failed task, QA FAIL, Sonnet escalation) |
+| Slack alerts | Off by default; optional (`QA_REVIEW_SLACK_ENABLED=true`, mode `escalation`) |
 
 Webhook endpoint:
 
@@ -96,5 +96,7 @@ ANTHROPIC_API_KEY=
 # QA_REVIEW_NEGATIVE_SENTIMENTS=negative
 # QA_REVIEW_ALWAYS_TAGS=negative
 # QA_REVIEW_SKIP_TAGS=voicemail reached,machine detected,not answered,dial no answer,dial busy,dial failed
+# QA_REVIEW_SLACK_ENABLED=false
+# QA_REVIEW_SLACK_MODE=escalation
 # QA_REVIEW_SLACK_CHANNEL=#ops-manager-alerts
 ```

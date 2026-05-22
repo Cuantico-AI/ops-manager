@@ -105,3 +105,40 @@ describe('isSampleSelected', () => {
     expect(isSampleSelected('call_stable_id', 0.5)).toBe(isSampleSelected('call_stable_id', 0.5));
   });
 });
+
+describe('shouldNotifySlackForAutoReview', () => {
+  it('does not notify Slack by default', async () => {
+    const { shouldNotifySlackForAutoReview } = await import('../../../src/lib/qa/review-policy.js');
+    delete process.env.QA_REVIEW_SLACK_ENABLED;
+
+    expect(
+      shouldNotifySlackForAutoReview({
+        decision: { review: true, trigger: 'negative', reason: 'negative', flagged: true },
+        pass: false,
+        escalated: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('notifies only on Sonnet escalation when mode is escalation', async () => {
+    const { shouldNotifySlackForAutoReview } = await import('../../../src/lib/qa/review-policy.js');
+    process.env.QA_REVIEW_SLACK_ENABLED = 'true';
+    process.env.QA_REVIEW_SLACK_MODE = 'escalation';
+
+    expect(
+      shouldNotifySlackForAutoReview({
+        decision: { review: true, trigger: 'negative', reason: 'negative', flagged: true },
+        pass: false,
+        escalated: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldNotifySlackForAutoReview({
+        decision: { review: true, trigger: 'negative', reason: 'negative', flagged: true },
+        pass: false,
+        escalated: true,
+      }),
+    ).toBe(true);
+  });
+});

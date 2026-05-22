@@ -129,23 +129,45 @@ export function shouldNotifySlackForAutoReview(input: {
   pass: boolean;
   escalated: boolean;
 }): boolean {
-  if (process.env.QA_REVIEW_SLACK_ALL === 'true') {
+  if (process.env.QA_REVIEW_SLACK_ENABLED !== 'true') {
+    return false;
+  }
+
+  const mode = getQaReviewSlackMode();
+
+  if (mode === 'all') {
     return true;
   }
 
-  if (input.decision.flagged) {
-    return true;
+  if (mode === 'escalation') {
+    return input.escalated;
   }
 
-  if (!input.pass) {
-    return true;
+  if (mode === 'fail') {
+    return input.escalated || !input.pass;
   }
 
-  if (input.escalated) {
-    return true;
+  if (mode === 'flagged') {
+    return input.decision.flagged || !input.pass || input.escalated;
   }
 
   return false;
+}
+
+export type QaReviewSlackMode = 'escalation' | 'fail' | 'flagged' | 'all';
+
+export function getQaReviewSlackMode(): QaReviewSlackMode {
+  const mode = process.env.QA_REVIEW_SLACK_MODE?.trim().toLowerCase();
+  if (mode === 'all' || process.env.QA_REVIEW_SLACK_ALL === 'true') {
+    return 'all';
+  }
+  if (mode === 'flagged') {
+    return 'flagged';
+  }
+  if (mode === 'fail') {
+    return 'fail';
+  }
+  return 'escalation';
 }
 
 function resolveDurationSec(payload: AssistablePostCallPayload): number {
