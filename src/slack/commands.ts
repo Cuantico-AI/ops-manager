@@ -30,6 +30,13 @@ import {
   type RefreshAssistableOAuthOutput,
 } from '../skills/assistable/refresh-oauth.js';
 import {
+  formatQaReviewOutput,
+  qaReviewTranscriptSkill,
+  parseQaReviewCommandArgs,
+  reviewTranscriptInputSchema,
+  type ReviewTranscriptOutput,
+} from '../skills/qa/review-transcript.js';
+import {
   checkAssistableOAuthInputSchema,
   assistableCheckOAuthStatusSkill,
   type CheckAssistableOAuthOutput,
@@ -406,9 +413,33 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (subcommand === 'qa-review' || subcommand === 'qa') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops qa-review <account name> :: <transcript>',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualQaReview(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatQaReviewOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `QA review failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1111,4 +1142,61 @@ function formatRefreshAssistableOAuthCommandError(err: unknown): string {
   }
 
   return err instanceof Error ? err.message : String(err);
+}
+
+async function runManualQaReview(args: string): Promise<ReviewTranscriptOutput> {
+  const parsedArgs = parseQaReviewCommandArgs(args);
+  const parsedInput = reviewTranscriptInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'qa-review',
+      'manual',
+      JSON.stringify({ command: '/ops qa-review', ...parsedInput, transcriptChars: parsedInput.transcript.length }),
+      'running',
+      JSON.stringify({
+        accountQuery: parsedInput.accountQuery,
+        transcriptChars: parsedInput.transcript.length,
+        callType: parsedInput.callType,
+      }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'qa-review',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await qaReviewTranscriptSkill.execute(parsedInput, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        score: output.score,
+        pass: output.pass,
+        findingCount: output.findings.length,
+        summary: output.summary,
+        findings: output.findings,
+      }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
 }

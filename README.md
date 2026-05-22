@@ -108,6 +108,15 @@ Phase 4 adds write-capable skills gated by Slack approval in production. With
 Pending approvals post to `SLACK_APPROVALS_CHANNEL` (default `#ops-manager-approvals`)
 with Approve/Reject buttons. Phase 4 scope: [docs/phases/PHASE-4.md](./docs/phases/PHASE-4.md).
 
+## Phase 5 agent roles
+
+Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
+
+- `/ops qa-review <account> :: <transcript>` — structured QA score + findings for a pasted call/chat transcript
+- Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
+
+Requires LiteLLM + `ANTHROPIC_API_KEY`. Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
+
 ## Deploy
 
 **Canonical deployment:** the DigitalOcean droplet at **`147.182.131.74`**, repo checked out at **`/opt/ops-manager`** (tracks `main`). The laptop `docker compose` stack [above](#local-dev-quickstart) is **local dev only** — this droplet is the source of truth for running ops-manager.
