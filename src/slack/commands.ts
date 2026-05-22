@@ -23,7 +23,9 @@ export function registerCommands(app: App): void {
   app.command('/ops', async ({ command, ack, respond }) => {
     await ack();
 
-    const subcommand = command.text.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+    const parts = command.text.trim().split(/\s+/).filter(Boolean);
+    const subcommand = parts[0]?.toLowerCase() ?? '';
+    const args = parts.slice(1).join(' ');
 
     if (subcommand === 'ping' || subcommand === '') {
       const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
@@ -62,7 +64,7 @@ export function registerCommands(app: App): void {
 
     if (subcommand === 'check-tokens' || subcommand === 'check-pit-tokens') {
       try {
-        const output = await runManualGhlTokenCheck();
+        const output = await runManualGhlTokenCheck(args || undefined);
         await respond({
           response_type: 'ephemeral',
           text: formatGhlTokenCheckSummary(output),
@@ -125,6 +127,25 @@ export function formatRosterSyncSummary(
 
 export function formatGhlTokenCheckSummary(output: CheckPitTokenOutput): string {
   const attention = output.results.filter((result) => result.status !== 'valid');
+  const onlyResult = output.results.length === 1 ? output.results[0] : undefined;
+
+  if (onlyResult) {
+    return [
+      'GHL PIT token check complete.',
+      `Account: ${onlyResult.accountName}`,
+      `Status: ${onlyResult.status}`,
+      `Location ID: ${onlyResult.ghlLocationId ?? 'missing'}`,
+      `HTTP status: ${onlyResult.httpStatus ?? 'n/a'}`,
+      `Token fingerprint: ${
+        onlyResult.tokenFingerprint ? `sha256:${onlyResult.tokenFingerprint}` : 'n/a'
+      }`,
+      onlyResult.status === 'valid'
+        ? 'Note: valid means this PIT can read the LeadConnector location endpoint; narrower endpoint scopes may still fail.'
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
 
   return [
     'GHL PIT token check complete.',
@@ -146,7 +167,7 @@ export function formatGhlTokenCheckSummary(output: CheckPitTokenOutput): string 
     .join('\n');
 }
 
-async function runManualGhlTokenCheck(): Promise<CheckPitTokenOutput> {
+async function runManualGhlTokenCheck(accountQuery?: string): Promise<CheckPitTokenOutput> {
   const jobId = randomUUID();
   await query(
     `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
@@ -155,9 +176,9 @@ async function runManualGhlTokenCheck(): Promise<CheckPitTokenOutput> {
       jobId,
       'system',
       'manual',
-      JSON.stringify({ command: '/ops check-tokens' }),
+      JSON.stringify({ command: '/ops check-tokens', accountQuery }),
       'running',
-      JSON.stringify({ includeInactive: false }),
+      JSON.stringify({ includeInactive: false, accountQuery }),
     ],
   );
 
@@ -170,7 +191,7 @@ async function runManualGhlTokenCheck(): Promise<CheckPitTokenOutput> {
   };
 
   try {
-    const input = checkPitTokenInputSchema.parse({ includeInactive: false });
+    const input = checkPitTokenInputSchema.parse({ includeInactive: false, accountQuery });
     const output = await ghlCheckPitTokenSkill.execute(input, ctx);
     await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
       'succeeded',

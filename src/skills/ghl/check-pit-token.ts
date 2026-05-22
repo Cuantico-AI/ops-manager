@@ -8,6 +8,7 @@ import {
   type GhlTokenCheckSummary,
 } from '../../lib/accounts/ghl-token-health.js';
 import { ghlClient, type GhlClient } from '../../lib/ghl/client.js';
+import { fingerprintPitToken, normalizePitToken } from '../../lib/ghl/token-utils.js';
 import { PostgresSecretStore, type SecretStore } from '../../lib/secrets/store.js';
 import type { Skill, SkillContext } from '../_types.js';
 
@@ -15,6 +16,7 @@ const DEFAULT_CONCURRENCY = 5;
 
 export const checkPitTokenInputSchema = z.object({
   accountId: z.string().uuid().optional(),
+  accountQuery: z.string().trim().min(1).optional(),
   includeInactive: z.boolean().optional(),
   concurrency: z.number().int().min(1).max(10).optional(),
 });
@@ -45,6 +47,7 @@ export const ghlCheckPitTokenSkill: Skill<CheckPitTokenInput, CheckPitTokenOutpu
       mutated: false,
       input: {
         accountId: input.accountId,
+        accountQuery: input.accountQuery,
         includeInactive: input.includeInactive === true,
         concurrency,
       },
@@ -52,6 +55,7 @@ export const ghlCheckPitTokenSkill: Skill<CheckPitTokenInput, CheckPitTokenOutpu
 
     const accounts = await listAccountsForGhlTokenCheck({
       accountId: input.accountId,
+      accountQuery: input.accountQuery,
       includeInactive: input.includeInactive === true,
     });
     const results = await checkAccounts(accounts, {
@@ -127,9 +131,11 @@ async function checkAccount(
 
   let pitToken: string;
   try {
-    pitToken = await opts.secretStore.getSecret(account.ghlPitTokenRef, {
-      kind: 'ghl-pit-token',
-    });
+    pitToken = normalizePitToken(
+      await opts.secretStore.getSecret(account.ghlPitTokenRef, {
+        kind: 'ghl-pit-token',
+      }),
+    );
   } catch (err) {
     return buildResult(account, opts.checkedAt, 'secret-error', {
       message: err instanceof Error ? err.message : String(err),
@@ -143,6 +149,7 @@ async function checkAccount(
 
   return buildResult(account, opts.checkedAt, validation.status, {
     httpStatus: validation.httpStatus,
+    tokenFingerprint: fingerprintPitToken(pitToken),
   });
 }
 
@@ -150,7 +157,7 @@ function buildResult(
   account: GhlAccountForTokenCheck,
   checkedAt: string,
   status: GhlTokenCheckResult['status'],
-  extra: { httpStatus?: number; message?: string } = {},
+  extra: { httpStatus?: number; message?: string; tokenFingerprint?: string } = {},
 ): GhlTokenCheckResult {
   return {
     accountId: account.id,
@@ -159,6 +166,7 @@ function buildResult(
     status,
     httpStatus: extra.httpStatus,
     message: extra.message,
+    tokenFingerprint: extra.tokenFingerprint,
     checkedAt,
   };
 }

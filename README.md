@@ -79,7 +79,8 @@ token-bearing Sheet URL; public CSV URLs are only appropriate for tokenless rost
 After deployment, run `/ops sync-roster` in Slack to sync the Sheet, then `/ops accounts`
 to view token-present/token-missing status.
 Run `/ops check-tokens` to validate stored GHL PIT tokens against LeadConnector; the
-daily scheduled check uses `GHL_TOKEN_HEALTH_CRON`.
+daily scheduled check uses `GHL_TOKEN_HEALTH_CRON`. To diagnose one account, pass a
+name: `/ops check-tokens Annie Stern`.
 
 ## Deploy
 
