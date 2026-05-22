@@ -5,6 +5,7 @@ import { formatRefreshAssistableOAuthOutput } from '../../../src/skills/assistab
 describe('formatApprovalResumeResult', () => {
   it('formats Assistable OAuth refresh resume output', () => {
     const output = {
+      mode: 'api' as const,
       accountId: 'account-1',
       accountName: 'Angelo',
       assistableLocationId: 'loc_123',
@@ -27,16 +28,19 @@ describe('formatApprovalResumeResult', () => {
 describe('formatRefreshAssistableOAuthOutput', () => {
   it('adds manual reset guidance when still disconnected', () => {
     const text = formatRefreshAssistableOAuthOutput({
+      mode: 'manual',
       accountId: 'account-1',
       accountName: 'Lupe',
       assistableLocationId: 'loc_456',
       locationSource: 'assistable-subaccount-id',
       previousStatus: 'disconnected',
       currentStatus: 'disconnected',
+      manualSteps: ['Reset OAuth manually in Assistable.'],
       refreshedAt: '2026-05-22T12:00:00.000Z',
     });
 
+    expect(text).toContain('Assistable OAuth reconnect guide.');
     expect(text).toContain('Current status: disconnected');
-    expect(text).toContain('reset the connection manually in Assistable');
+    expect(text).toContain('Reset OAuth manually in Assistable.');
   });
 });

@@ -135,7 +135,8 @@ describe('AssistableClient', () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('assistable_secret');
   });
 
-  it('posts refresh-oauth with location_id body', async () => {
+  it('posts refresh-oauth with location_id body when path is configured', async () => {
+    vi.stubEnv('ASSISTABLE_REFRESH_OAUTH_PATH', '/v2/refresh-oauth');
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -160,7 +161,51 @@ describe('AssistableClient', () => {
     });
   });
 
+  it('reports route-not-found when refresh path is not configured', async () => {
+    vi.unstubAllEnvs();
+    delete process.env.ASSISTABLE_REFRESH_OAUTH_PATH;
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    const result = await client.refreshLocationOAuth({ locationId: 'loc_123' });
+
+    expect(result.success).toBe(false);
+    expect(result.routeNotFound).toBe(true);
+    expect(result.message).toContain('ASSISTABLE_REFRESH_OAUTH_PATH is not configured');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports route-not-found for generic 404 refresh responses', async () => {
+    vi.stubEnv('ASSISTABLE_REFRESH_OAUTH_PATH', '/v2/refresh-oauth');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: vi.fn().mockResolvedValue(JSON.stringify({ message: 'Not Found' })),
+      }),
+    );
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    const result = await client.refreshLocationOAuth({ locationId: 'loc_123' });
+
+    expect(result.success).toBe(false);
+    expect(result.routeNotFound).toBe(true);
+    expect(result.message).toBe('Not Found');
+  });
+
   it('reports route-not-found for missing refresh endpoint', async () => {
+    vi.stubEnv('ASSISTABLE_REFRESH_OAUTH_PATH', '/v2/refresh-oauth');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({

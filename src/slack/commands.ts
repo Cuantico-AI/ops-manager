@@ -15,6 +15,7 @@ import {
 } from '../lib/approval/resume.js';
 import { listRecentJobs } from '../lib/approval/store.js';
 import { query } from '../lib/db/client.js';
+import { ExternalServiceError } from '../lib/errors.js';
 import { formatFleetDailyHealthOverview, type FleetDailyHealthChecks } from '../lib/health/fleet-daily-summary.js';
 import { llmClient } from '../lib/llm/client.js';
 import {
@@ -399,7 +400,7 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
 
         await respond({
           response_type: 'ephemeral',
-          text: `Refresh Assistable OAuth failed: ${err instanceof Error ? err.message : String(err)}`,
+          text: `Refresh Assistable OAuth failed: ${formatRefreshAssistableOAuthCommandError(err)}`,
         });
       }
       return;
@@ -1082,6 +1083,7 @@ async function runManualRefreshAssistableOAuth(
     await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
       'succeeded',
       JSON.stringify({
+        mode: output.mode,
         previousStatus: output.previousStatus,
         currentStatus: output.currentStatus,
       }),
@@ -1101,4 +1103,12 @@ async function runManualRefreshAssistableOAuth(
     ]);
     throw err;
   }
+}
+
+function formatRefreshAssistableOAuthCommandError(err: unknown): string {
+  if (err instanceof ExternalServiceError) {
+    return err.message;
+  }
+
+  return err instanceof Error ? err.message : String(err);
 }

@@ -29,7 +29,6 @@ export interface RefreshLocationOAuthResult {
 }
 
 const DEFAULT_ASSISTABLE_API_BASE_URL = 'https://api.assistable.ai';
-const DEFAULT_ASSISTABLE_REFRESH_OAUTH_PATH = '/v2/refresh-oauth';
 const DEFAULT_ASSISTABLE_TIMEOUT_MS = 15_000;
 const HEALTH_PROBE_CONTACT_ID = 'ops-manager-health-probe';
 
@@ -45,6 +44,28 @@ const DISCONNECTED_PATTERNS = [
 ];
 
 const CONNECTED_PATTERNS = ['no ghl conversation found for contact'];
+
+export function isAssistableRefreshOAuthConfigured(): boolean {
+  return Boolean(process.env.ASSISTABLE_REFRESH_OAUTH_PATH?.trim());
+}
+
+export function getAssistableRefreshOAuthPath(): string | null {
+  const path = process.env.ASSISTABLE_REFRESH_OAUTH_PATH?.trim();
+  return path || null;
+}
+
+export function buildManualAssistableOAuthResetSteps(
+  accountName: string,
+  locationId: string,
+): string[] {
+  return [
+    `Assistable has no public OAuth refresh API. Reset OAuth manually for ${accountName} (location ${locationId}):`,
+    '1. Open the Assistable agency dashboard.',
+    '2. Go to Agency-Level Settings > Reset Connection (or use Direct Connection in the sub-account: Settings > Integrations > Connect GHL).',
+    '3. Complete the GoHighLevel OAuth flow in an incognito window via app.gohighlevel.com if the agency connection fails.',
+    '4. Run `/ops check-assistable ' + accountName + '` to verify the connection.',
+  ];
+}
 
 export class AssistableClient {
   private readonly baseUrl: string;
@@ -134,8 +155,16 @@ export class AssistableClient {
       };
     }
 
-    const path =
-      process.env.ASSISTABLE_REFRESH_OAUTH_PATH?.trim() || DEFAULT_ASSISTABLE_REFRESH_OAUTH_PATH;
+    const path = getAssistableRefreshOAuthPath();
+    if (!path) {
+      return {
+        success: false,
+        routeNotFound: true,
+        message:
+          'ASSISTABLE_REFRESH_OAUTH_PATH is not configured; Assistable does not publish a public OAuth refresh endpoint',
+      };
+    }
+
     const url = new URL(path, this.baseUrl);
     let res: Response;
 
@@ -158,13 +187,13 @@ export class AssistableClient {
     }
 
     const message = await readResponseMessage(res);
-    if (isRouteNotFound(message, res.status)) {
+    if (res.status === 404 || isRouteNotFound(message, res.status)) {
       return {
         success: false,
         httpStatus: res.status,
         message:
           message ??
-          `Assistable refresh route not found at ${path}; reset OAuth manually in the Assistable dashboard (Agency-Level Settings > Reset Connection)`,
+          `Assistable refresh route not found at ${path}. Reset OAuth manually in the Assistable dashboard (Agency-Level Settings > Reset Connection).`,
         routeNotFound: true,
       };
     }

@@ -9,7 +9,12 @@ import {
 import { resolveAccountInput } from '../../lib/accounts/resolve-account-input.js';
 import { query } from '../../lib/db/client.js';
 import { ExternalServiceError, NotFoundError, ValidationError } from '../../lib/errors.js';
-import { assistableClient, type AssistableClient } from '../../lib/assistable/client.js';
+import {
+  assistableClient,
+  buildManualAssistableOAuthResetSteps,
+  isAssistableRefreshOAuthConfigured,
+  type AssistableClient,
+} from '../../lib/assistable/client.js';
 import type { Skill, SkillContext } from '../_types.js';
 
 export const refreshAssistableOAuthInputSchema = z.object({
@@ -20,6 +25,7 @@ export const refreshAssistableOAuthInputSchema = z.object({
 export type RefreshAssistableOAuthInput = z.infer<typeof refreshAssistableOAuthInputSchema>;
 
 export interface RefreshAssistableOAuthOutput {
+  mode: 'manual' | 'api';
   accountId: string;
   accountName: string;
   assistableLocationId: string;
@@ -27,6 +33,7 @@ export interface RefreshAssistableOAuthOutput {
   previousStatus: AccountAssistableOAuthStatus | null;
   currentStatus: AccountAssistableOAuthStatus;
   refreshMessage?: string;
+  manualSteps?: string[];
   refreshedAt: string;
 }
 
@@ -35,9 +42,9 @@ export const assistableRefreshOAuthSkill: Skill<
   RefreshAssistableOAuthOutput
 > = {
   id: 'assistable.refresh-oauth',
-  description: 'Refresh Assistable GHL OAuth for a disconnected account location',
-  mutates: true,
-  requiresApproval: true,
+  description: 'Diagnose and reconnect Assistable GHL OAuth for an account',
+  mutates: false,
+  requiresApproval: false,
   schema: refreshAssistableOAuthInputSchema,
   async execute(input, ctx: SkillContext): Promise<RefreshAssistableOAuthOutput> {
     const account = await resolveAccountInput(input);
@@ -57,6 +64,51 @@ export const assistableRefreshOAuthSkill: Skill<
     }
 
     const previousStatus = await readPreviousOAuthStatus(account.id);
+    const checkedAt = new Date().toISOString();
+
+    await ctx.audit.log({
+      jobId: ctx.jobId,
+      actor: ctx.agentId,
+      action: 'assistable.refresh-oauth',
+      target: account.id,
+      mutated: false,
+      input: {
+        accountId: account.id,
+        accountName: account.name,
+        assistableLocationId: resolved.locationId,
+        locationSource: resolved.source,
+        previousStatus,
+        apiRefreshConfigured: isAssistableRefreshOAuthConfigured(),
+      },
+    });
+
+    if (!isAssistableRefreshOAuthConfigured()) {
+      const output = await runManualReconnectGuide(
+        {
+          accountId: account.id,
+          accountName: account.name,
+          assistableLocationId: resolved.locationId,
+          locationSource: resolved.source,
+          previousStatus,
+          checkedAt,
+        },
+        assistableClient,
+      );
+
+      await ctx.audit.log({
+        jobId: ctx.jobId,
+        actor: ctx.agentId,
+        action: 'assistable.refresh-oauth',
+        target: account.id,
+        mutated: false,
+        output: {
+          mode: output.mode,
+          currentStatus: output.currentStatus,
+        },
+      });
+
+      return output;
+    }
 
     const targetSummary = `Refresh Assistable OAuth for ${account.name} (${resolved.locationId})`;
     const approval = await ctx.approval.gate({
@@ -73,29 +125,14 @@ export const assistableRefreshOAuthSkill: Skill<
       },
     });
 
-    await ctx.audit.log({
-      jobId: ctx.jobId,
-      actor: ctx.agentId,
-      action: 'assistable.refresh-oauth',
-      target: account.id,
-      mutated: true,
-      approvalId: approval.approvalId,
-      input: {
-        accountId: account.id,
-        accountName: account.name,
-        assistableLocationId: resolved.locationId,
-        locationSource: resolved.source,
-        previousStatus,
-      },
-    });
-
-    const output = await refreshAndVerify(
+    const output = await refreshViaApi(
       {
         accountId: account.id,
         accountName: account.name,
         assistableLocationId: resolved.locationId,
         locationSource: resolved.source,
         previousStatus,
+        checkedAt,
       },
       assistableClient,
     );
@@ -108,6 +145,7 @@ export const assistableRefreshOAuthSkill: Skill<
       mutated: true,
       approvalId: approval.approvalId,
       output: {
+        mode: output.mode,
         previousStatus: output.previousStatus,
         currentStatus: output.currentStatus,
         refreshMessage: output.refreshMessage,
@@ -119,6 +157,25 @@ export const assistableRefreshOAuthSkill: Skill<
 };
 
 export function formatRefreshAssistableOAuthOutput(output: RefreshAssistableOAuthOutput): string {
+  if (output.mode === 'manual') {
+    const lines = [
+      'Assistable OAuth reconnect guide.',
+      `Account: ${output.accountName}`,
+      `Location ID: ${output.assistableLocationId} (${output.locationSource})`,
+      `Previous status: ${output.previousStatus ?? 'unknown'}`,
+      `Current status: ${output.currentStatus}`,
+      `Checked at: ${output.refreshedAt}`,
+      '',
+      ...(output.manualSteps ?? []),
+    ];
+
+    if (output.currentStatus === 'connected') {
+      lines.push('', 'No manual reset is needed — OAuth is already connected.');
+    }
+
+    return lines.join('\n');
+  }
+
   const lines = [
     'Assistable OAuth refresh completed.',
     `Account: ${output.accountName}`,
@@ -134,7 +191,9 @@ export function formatRefreshAssistableOAuthOutput(output: RefreshAssistableOAut
 
   if (output.currentStatus !== 'connected') {
     lines.push(
-      'OAuth is still not connected. If refresh failed, reset the connection manually in Assistable (Agency-Level Settings > Reset Connection).',
+      'OAuth is still not connected. Reset the connection manually in Assistable (Agency-Level Settings > Reset Connection), then run `/ops check-assistable ' +
+        output.accountName +
+        '`.',
     );
   }
 
@@ -150,17 +209,49 @@ async function readPreviousOAuthStatus(accountId: string): Promise<AccountAssist
   return rows[0]?.assistable_oauth_status ?? null;
 }
 
-async function refreshAndVerify(
+async function runManualReconnectGuide(
   input: {
     accountId: string;
     accountName: string;
     assistableLocationId: string;
     locationSource: 'assistable-subaccount-id' | 'ghl-location-id';
     previousStatus: AccountAssistableOAuthStatus | null;
+    checkedAt: string;
   },
   client: AssistableClient,
 ): Promise<RefreshAssistableOAuthOutput> {
-  const refreshedAt = new Date().toISOString();
+  const verification = await client.checkLocationConnection({
+    locationId: input.assistableLocationId,
+  });
+  await saveAssistableOAuthCheckResult(buildCheckResult(input, verification, input.checkedAt));
+
+  return {
+    mode: 'manual',
+    accountId: input.accountId,
+    accountName: input.accountName,
+    assistableLocationId: input.assistableLocationId,
+    locationSource: input.locationSource,
+    previousStatus: input.previousStatus,
+    currentStatus: verification.status,
+    manualSteps:
+      verification.status === 'connected'
+        ? undefined
+        : buildManualAssistableOAuthResetSteps(input.accountName, input.assistableLocationId),
+    refreshedAt: input.checkedAt,
+  };
+}
+
+async function refreshViaApi(
+  input: {
+    accountId: string;
+    accountName: string;
+    assistableLocationId: string;
+    locationSource: 'assistable-subaccount-id' | 'ghl-location-id';
+    previousStatus: AccountAssistableOAuthStatus | null;
+    checkedAt: string;
+  },
+  client: AssistableClient,
+): Promise<RefreshAssistableOAuthOutput> {
   const refresh = await client.refreshLocationOAuth({
     locationId: input.assistableLocationId,
   });
@@ -169,7 +260,7 @@ async function refreshAndVerify(
     if (refresh.routeNotFound) {
       throw new ExternalServiceError(
         refresh.message ??
-          'Assistable refresh OAuth route is not available. Reset the connection manually in the Assistable dashboard (Agency-Level Settings > Reset Connection).',
+          'Assistable OAuth refresh is not available via API. Reset the connection manually in the Assistable dashboard (Agency-Level Settings > Reset Connection).',
         'ASSISTABLE_REFRESH_ROUTE_NOT_FOUND',
       );
     }
@@ -183,19 +274,10 @@ async function refreshAndVerify(
   const verification = await client.checkLocationConnection({
     locationId: input.assistableLocationId,
   });
-  const checkResult: AssistableOAuthCheckResult = {
-    accountId: input.accountId,
-    accountName: input.accountName,
-    assistableLocationId: input.assistableLocationId,
-    locationSource: input.locationSource,
-    status: verification.status,
-    httpStatus: verification.httpStatus,
-    message: verification.message,
-    checkedAt: refreshedAt,
-  };
-  await saveAssistableOAuthCheckResult(checkResult);
+  await saveAssistableOAuthCheckResult(buildCheckResult(input, verification, input.checkedAt));
 
   return {
+    mode: 'api',
     accountId: input.accountId,
     accountName: input.accountName,
     assistableLocationId: input.assistableLocationId,
@@ -203,6 +285,32 @@ async function refreshAndVerify(
     previousStatus: input.previousStatus,
     currentStatus: verification.status,
     refreshMessage: refresh.message,
-    refreshedAt,
+    refreshedAt: input.checkedAt,
+  };
+}
+
+function buildCheckResult(
+  input: {
+    accountId: string;
+    accountName: string;
+    assistableLocationId: string;
+    locationSource: 'assistable-subaccount-id' | 'ghl-location-id';
+  },
+  verification: {
+    status: AccountAssistableOAuthStatus;
+    httpStatus?: number;
+    message?: string;
+  },
+  checkedAt: string,
+): AssistableOAuthCheckResult {
+  return {
+    accountId: input.accountId,
+    accountName: input.accountName,
+    assistableLocationId: input.assistableLocationId,
+    locationSource: input.locationSource,
+    status: verification.status,
+    httpStatus: verification.httpStatus,
+    message: verification.message,
+    checkedAt,
   };
 }

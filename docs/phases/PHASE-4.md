@@ -35,14 +35,13 @@ Reject via button or `/ops reject <approval-id>`.
 
 ## Slice 3 (this PR)
 
-- `assistable.refresh-oauth` — refresh Assistable GHL OAuth for disconnected accounts
+- `assistable.refresh-oauth` — diagnose Assistable GHL OAuth and guide manual reconnect
 - `/ops refresh-assistable <account>`
 
-Assistable does not publish a public refresh-OAuth API route. Ops Manager calls a
-configurable endpoint (`ASSISTABLE_REFRESH_OAUTH_PATH`, default `/v2/refresh-oauth`) and
-re-verifies connection via the existing health probe. If the route is missing, the
-command fails with instructions to reset OAuth manually in the Assistable dashboard
-(Agency-Level Settings > Reset Connection).
+Assistable does not publish a public OAuth refresh API. By default, the command re-checks
+OAuth health and returns step-by-step manual reset instructions for disconnected accounts.
+If Assistable provides an internal refresh route, set `ASSISTABLE_REFRESH_OAUTH_PATH` on the
+droplet to enable approval-gated API refresh attempts.
 
 ## Required env vars
 
