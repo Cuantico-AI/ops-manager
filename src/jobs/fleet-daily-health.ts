@@ -28,7 +28,10 @@ import {
   type CheckN8nWorkflowHealthInput,
   type CheckN8nWorkflowHealthOutput,
 } from '../skills/n8n/check-workflow-health.js';
-import { postMessageInputSchema } from '../skills/slack/post-message.js';
+import {
+  postMessageInputSchema,
+  type PostMessageOutput,
+} from '../skills/slack/post-message.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import type { Skill, SkillContext } from '../skills/_types.js';
 
@@ -70,13 +73,13 @@ export async function runFleetDailyHealth(registry: SkillRegistry): Promise<void
     const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
     const postSkill = registry.get('slack.post-message');
 
-    const parent = await postSkill.execute(
+    const parent = (await postSkill.execute(
       postMessageInputSchema.parse({
         channel,
         text: formatFleetDailyHealthOverview(checks),
       }),
       ctx,
-    );
+    )) as PostMessageOutput;
 
     await postSkill.execute(
       postMessageInputSchema.parse({
