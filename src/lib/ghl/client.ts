@@ -1,3 +1,5 @@
+import { ExternalServiceError } from '../errors.js';
+
 export type GhlPitTokenStatus = 'valid' | 'invalid' | 'forbidden' | 'not_found' | 'unreachable';
 
 export interface ValidatePitTokenInput {
@@ -11,9 +13,37 @@ export interface ValidatePitTokenResult {
   message?: string;
 }
 
+export interface GhlPipelineStage {
+  id: string;
+  name: string;
+}
+
+export interface GhlPipeline {
+  id: string;
+  name: string;
+  locationId: string;
+  stages: GhlPipelineStage[];
+}
+
+export interface GhlOpportunity {
+  id: string;
+  name: string;
+  pipelineId: string;
+  pipelineStageId: string;
+  status: string;
+  monetaryValue?: number;
+}
+
+export interface ListOpportunitiesOptions {
+  limit?: number;
+  maxPages?: number;
+}
+
 const DEFAULT_GHL_API_BASE_URL = 'https://services.leadconnectorhq.com';
 const DEFAULT_GHL_API_VERSION = '2021-07-28';
 const DEFAULT_GHL_TIMEOUT_MS = 15_000;
+const DEFAULT_OPPORTUNITY_PAGE_SIZE = 100;
+const DEFAULT_MAX_OPPORTUNITY_PAGES = 20;
 
 export class GhlClient {
   private readonly baseUrl: string;
@@ -32,14 +62,7 @@ export class GhlClient {
     let res: Response;
 
     try {
-      res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${input.pitToken}`,
-          Version: this.apiVersion,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+      res = await this.request(url, input.pitToken);
     } catch (err) {
       return {
         status: 'unreachable',
@@ -68,6 +91,129 @@ export class GhlClient {
       message,
     };
   }
+
+  async listPipelines(locationId: string, pitToken: string): Promise<GhlPipeline[]> {
+    const url = new URL('/opportunities/pipelines', this.baseUrl);
+    url.searchParams.set('locationId', locationId);
+    const res = await this.request(url, pitToken);
+    if (!res.ok) {
+      throw await toGhlError('list pipelines', res);
+    }
+
+    const payload = (await res.json()) as { pipelines?: unknown[] };
+    return (payload.pipelines ?? []).map(parsePipeline).filter(Boolean) as GhlPipeline[];
+  }
+
+  async listOpportunities(
+    locationId: string,
+    pitToken: string,
+    opts: ListOpportunitiesOptions = {},
+  ): Promise<GhlOpportunity[]> {
+    const pageSize = opts.limit ?? DEFAULT_OPPORTUNITY_PAGE_SIZE;
+    const maxPages = opts.maxPages ?? DEFAULT_MAX_OPPORTUNITY_PAGES;
+    const opportunities: GhlOpportunity[] = [];
+
+    for (let page = 1; page <= maxPages; page += 1) {
+      const url = new URL('/opportunities/search', this.baseUrl);
+      url.searchParams.set('location_id', locationId);
+      url.searchParams.set('limit', String(pageSize));
+      url.searchParams.set('page', String(page));
+
+      const res = await this.request(url, pitToken);
+      if (!res.ok) {
+        throw await toGhlError('search opportunities', res);
+      }
+
+      const payload = (await res.json()) as {
+        opportunities?: unknown[];
+        meta?: { nextPage?: number | null; total?: number };
+      };
+      const pageItems = (payload.opportunities ?? []).map(parseOpportunity).filter(Boolean) as GhlOpportunity[];
+      opportunities.push(...pageItems);
+
+      if (pageItems.length < pageSize) {
+        break;
+      }
+      if (payload.meta?.nextPage == null) {
+        break;
+      }
+    }
+
+    return opportunities;
+  }
+
+  private async request(url: URL, pitToken: string): Promise<Response> {
+    return fetch(url, {
+      headers: {
+        Authorization: `Bearer ${pitToken}`,
+        Version: this.apiVersion,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+  }
+}
+
+function parsePipeline(value: unknown): GhlPipeline | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const locationId = typeof record.locationId === 'string' ? record.locationId : '';
+  if (!id || !name) {
+    return null;
+  }
+
+  const stages = Array.isArray(record.stages)
+    ? record.stages
+        .map(parseStage)
+        .filter((stage): stage is GhlPipelineStage => stage !== null)
+    : [];
+
+  return { id, name, locationId, stages };
+}
+
+function parseStage(value: unknown): GhlPipelineStage | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  if (!id || !name) {
+    return null;
+  }
+
+  return { id, name };
+}
+
+function parseOpportunity(value: unknown): GhlOpportunity | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const pipelineId = typeof record.pipelineId === 'string' ? record.pipelineId : null;
+  const pipelineStageId = typeof record.pipelineStageId === 'string' ? record.pipelineStageId : null;
+  const status = typeof record.status === 'string' ? record.status : 'unknown';
+  if (!id || !name || !pipelineId || !pipelineStageId) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    pipelineId,
+    pipelineStageId,
+    status,
+    monetaryValue: typeof record.monetaryValue === 'number' ? record.monetaryValue : undefined,
+  };
 }
 
 async function readErrorMessage(res: Response): Promise<string | undefined> {
@@ -78,6 +224,15 @@ async function readErrorMessage(res: Response): Promise<string | undefined> {
   } catch {
     return undefined;
   }
+}
+
+async function toGhlError(action: string, res: Response): Promise<ExternalServiceError> {
+  const body = await readErrorMessage(res);
+  const detail = body ? `: ${body}` : '';
+  return new ExternalServiceError(
+    `GHL ${action} failed: ${res.status} ${res.statusText}${detail}`,
+    'GHL_API_ERROR',
+  );
 }
 
 export const ghlClient = new GhlClient();

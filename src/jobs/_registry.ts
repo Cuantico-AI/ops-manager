@@ -3,6 +3,11 @@ import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
+  getGhlPipelineSnapshotCron,
+  GHL_PIPELINE_SNAPSHOT_QUEUE,
+  runGhlPipelineSnapshot,
+} from './ghl-pipeline-snapshot.js';
+import {
   getGhlTokenHealthCron,
   GHL_TOKEN_HEALTH_QUEUE,
   runGhlTokenHealth,
@@ -11,6 +16,7 @@ import { getHeartbeatCron, HEARTBEAT_QUEUE, runHeartbeat } from './heartbeat.js'
 
 let heartbeatWorker: Worker | null = null;
 let ghlTokenHealthWorker: Worker | null = null;
+let ghlPipelineSnapshotWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -53,6 +59,28 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   ghlTokenHealthWorker = getWorker(GHL_TOKEN_HEALTH_QUEUE, async () => {
     await runGhlTokenHealth(registry);
   });
+
+  const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
+  const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
+
+  await ghlPipelineSnapshotQueue.obliterate({ force: true });
+  await ghlPipelineSnapshotQueue.add(
+    'ghl-pipeline-snapshot-tick',
+    {},
+    {
+      repeat: { pattern: ghlPipelineSnapshotCron },
+      jobId: 'ghl-pipeline-snapshot-repeatable',
+    },
+  );
+
+  logger.info(
+    { cron: ghlPipelineSnapshotCron, queue: GHL_PIPELINE_SNAPSHOT_QUEUE },
+    'Registered GHL pipeline snapshot cron job',
+  );
+
+  ghlPipelineSnapshotWorker = getWorker(GHL_PIPELINE_SNAPSHOT_QUEUE, async () => {
+    await runGhlPipelineSnapshot(registry);
+  });
 }
 
 export async function stopScheduledJobs(): Promise<void> {
@@ -63,5 +91,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (ghlTokenHealthWorker) {
     await ghlTokenHealthWorker.close();
     ghlTokenHealthWorker = null;
+  }
+  if (ghlPipelineSnapshotWorker) {
+    await ghlPipelineSnapshotWorker.close();
+    ghlPipelineSnapshotWorker = null;
   }
 }

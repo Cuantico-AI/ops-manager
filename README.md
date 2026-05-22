@@ -81,6 +81,8 @@ to view token-present/token-missing status.
 Run `/ops check-tokens` to validate stored GHL PIT tokens against LeadConnector; the
 daily scheduled check uses `GHL_TOKEN_HEALTH_CRON`. To diagnose one account, pass a
 name: `/ops check-tokens Annie Stern`.
+Run `/ops ghl-snapshot Complete Lending` for a per-account pipeline/opportunity report.
+The weekly fleet summary runs on `GHL_PIPELINE_SNAPSHOT_CRON`.
 
 ## Deploy
 
