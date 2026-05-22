@@ -3,6 +3,7 @@ import {
   formatAccountsSummary,
   formatAssistableOAuthCheckSummary,
   formatGhlTokenCheckSummary,
+  formatN8nWorkflowCheckSummary,
   formatRosterSyncSummary,
 } from '../../src/slack/commands.js';
 import type {
@@ -185,5 +186,94 @@ describe('Slack command formatters', () => {
     expect(text).toContain('Needs attention: 1');
     expect(text).toContain('• Bad OAuth Account — disconnected');
     expect(text).not.toContain('assistable_secret');
+  });
+
+  it('formats n8n workflow checks without exposing API keys', () => {
+    const text = formatN8nWorkflowCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 1,
+        healthy: 0,
+        needsAttention: 1,
+        missingWorkflowIds: 0,
+        inactiveWorkflows: 0,
+        failingWorkflows: 1,
+        staleWorkflows: 0,
+        notFoundWorkflows: 0,
+        unreachableWorkflows: 0,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Complete Lending',
+          status: 'needs-attention',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [
+            {
+              workflowId: 'wf_1',
+              workflowName: 'Client Sync',
+              active: true,
+              status: 'failing',
+              lastRunAt: '2026-05-21T00:00:00.000Z',
+              lastRunStatus: 'error',
+              recentExecutions: 3,
+              recentErrors: 2,
+              message: 'n8n_secret should stay out of Slack',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(text).toContain('n8n workflow check complete.');
+    expect(text).toContain('Status: needs-attention');
+    expect(text).toContain('Client Sync (wf_1) — failing');
+    expect(text).not.toContain('n8n_secret');
+  });
+
+  it('formats fleet n8n workflow checks without exposing API keys', () => {
+    const text = formatN8nWorkflowCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 2,
+        healthy: 1,
+        needsAttention: 1,
+        missingWorkflowIds: 0,
+        inactiveWorkflows: 0,
+        failingWorkflows: 1,
+        staleWorkflows: 0,
+        notFoundWorkflows: 0,
+        unreachableWorkflows: 0,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Complete Lending',
+          status: 'healthy',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [],
+        },
+        {
+          accountId: 'account-2',
+          accountName: 'Bad Workflow Account',
+          status: 'needs-attention',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+          workflows: [
+            {
+              workflowId: 'wf_2',
+              workflowName: 'Client Sync',
+              active: true,
+              status: 'failing',
+              recentExecutions: 1,
+              recentErrors: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(text).toContain('Failing workflows: 1');
+    expect(text).toContain('Bad Workflow Account — Client Sync: failing');
+    expect(text).not.toContain('n8n_secret');
   });
 });

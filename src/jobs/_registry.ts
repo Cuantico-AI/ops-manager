@@ -3,6 +3,11 @@ import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
+  getN8nWorkflowHealthCron,
+  N8N_WORKFLOW_HEALTH_QUEUE,
+  runN8nWorkflowHealth,
+} from './n8n-workflow-health.js';
+import {
   getAssistableOAuthHealthCron,
   ASSISTABLE_OAUTH_HEALTH_QUEUE,
   runAssistableOAuthHealth,
@@ -29,6 +34,7 @@ let ghlTokenHealthWorker: Worker | null = null;
 let ghlPipelineSnapshotWorker: Worker | null = null;
 let ghlConfigInventoryWorker: Worker | null = null;
 let assistableOAuthHealthWorker: Worker | null = null;
+let n8nWorkflowHealthWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -137,6 +143,28 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   assistableOAuthHealthWorker = getWorker(ASSISTABLE_OAUTH_HEALTH_QUEUE, async () => {
     await runAssistableOAuthHealth(registry);
   });
+
+  const n8nWorkflowHealthQueue = getQueue(N8N_WORKFLOW_HEALTH_QUEUE);
+  const n8nWorkflowHealthCron = getN8nWorkflowHealthCron();
+
+  await n8nWorkflowHealthQueue.obliterate({ force: true });
+  await n8nWorkflowHealthQueue.add(
+    'n8n-workflow-health-tick',
+    {},
+    {
+      repeat: { pattern: n8nWorkflowHealthCron },
+      jobId: 'n8n-workflow-health-repeatable',
+    },
+  );
+
+  logger.info(
+    { cron: n8nWorkflowHealthCron, queue: N8N_WORKFLOW_HEALTH_QUEUE },
+    'Registered n8n workflow health cron job',
+  );
+
+  n8nWorkflowHealthWorker = getWorker(N8N_WORKFLOW_HEALTH_QUEUE, async () => {
+    await runN8nWorkflowHealth(registry);
+  });
 }
 
 export async function stopScheduledJobs(): Promise<void> {
@@ -159,5 +187,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (assistableOAuthHealthWorker) {
     await assistableOAuthHealthWorker.close();
     assistableOAuthHealthWorker = null;
+  }
+  if (n8nWorkflowHealthWorker) {
+    await n8nWorkflowHealthWorker.close();
+    n8nWorkflowHealthWorker = null;
   }
 }

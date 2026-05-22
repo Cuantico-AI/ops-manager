@@ -11,6 +11,11 @@ import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
 import { llmClient } from '../lib/llm/client.js';
 import {
+  checkN8nWorkflowHealthInputSchema,
+  n8nCheckWorkflowHealthSkill,
+  type CheckN8nWorkflowHealthOutput,
+} from '../skills/n8n/check-workflow-health.js';
+import {
   checkAssistableOAuthInputSchema,
   assistableCheckOAuthStatusSkill,
   type CheckAssistableOAuthOutput,
@@ -111,6 +116,22 @@ export function registerCommands(app: App): void {
       return;
     }
 
+    if (subcommand === 'check-n8n' || subcommand === 'check-n8n-workflows') {
+      try {
+        const output = await runManualN8nWorkflowCheck(args || undefined);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatN8nWorkflowCheckSummary(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `n8n workflow check failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     if (subcommand === 'ghl-snapshot') {
       if (!args) {
         await respond({
@@ -161,7 +182,7 @@ export function registerCommands(app: App): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -285,6 +306,111 @@ export function formatAssistableOAuthCheckSummary(output: CheckAssistableOAuthOu
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+export function formatN8nWorkflowCheckSummary(output: CheckN8nWorkflowHealthOutput): string {
+  const attention = output.results.filter((result) => result.status === 'needs-attention');
+  const onlyResult = output.results.length === 1 ? output.results[0] : undefined;
+
+  if (onlyResult) {
+    if (onlyResult.status === 'missing-workflow-ids') {
+      return [
+        'n8n workflow check complete.',
+        `Account: ${onlyResult.accountName}`,
+        'Status: missing-workflow-ids',
+        'No n8n workflow IDs are stored for this account in the roster.',
+      ].join('\n');
+    }
+
+    return [
+      'n8n workflow check complete.',
+      `Account: ${onlyResult.accountName}`,
+      `Status: ${onlyResult.status}`,
+      ...onlyResult.workflows.map((workflow) => {
+        const lastRun = workflow.lastRunAt ? `, last run ${workflow.lastRunAt}` : '';
+        const errors =
+          workflow.recentErrors > 0 ? `, ${workflow.recentErrors} recent error(s)` : '';
+        return `• ${workflow.workflowName} (${workflow.workflowId}) — ${workflow.status}${lastRun}${errors}`;
+      }),
+    ].join('\n');
+  }
+
+  return [
+    'n8n workflow check complete.',
+    `Checked: ${output.summary.total}`,
+    `Healthy: ${output.summary.healthy}`,
+    `Needs attention: ${output.summary.needsAttention}`,
+    `Missing workflow IDs: ${output.summary.missingWorkflowIds}`,
+    `Failing workflows: ${output.summary.failingWorkflows}`,
+    `Stale workflows: ${output.summary.staleWorkflows}`,
+    `Inactive workflows: ${output.summary.inactiveWorkflows}`,
+    `Not found: ${output.summary.notFoundWorkflows}`,
+    `Unreachable: ${output.summary.unreachableWorkflows}`,
+    attention.length ? '' : 'All checked accounts with n8n workflows are healthy.',
+    ...attention.slice(0, 20).map((result) => {
+      const badWorkflows = result.workflows.filter((workflow) =>
+        ['failing', 'stale', 'not_found', 'unreachable'].includes(workflow.status),
+      );
+      const detail = badWorkflows
+        .slice(0, 2)
+        .map((workflow) => `${workflow.workflowName}: ${workflow.status}`)
+        .join('; ');
+      return `• ${result.accountName} — ${detail || result.status}`;
+    }),
+    attention.length > 20 ? `…and ${attention.length - 20} more needing attention` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function runManualN8nWorkflowCheck(
+  accountQuery?: string,
+): Promise<CheckN8nWorkflowHealthOutput> {
+  const jobId = randomUUID();
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops check-n8n', accountQuery }),
+      'running',
+      JSON.stringify({ includeInactive: false, accountQuery }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const input = checkN8nWorkflowHealthInputSchema.parse({
+      includeInactive: false,
+      accountQuery,
+    });
+    const output = await n8nCheckWorkflowHealthSkill.execute(input, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({ summary: output.summary }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
 }
 
 async function runManualAssistableOAuthCheck(
