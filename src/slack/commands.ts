@@ -45,12 +45,20 @@ import {
   type GhlSnapshotOutput,
 } from '../skills/ghl/snapshot.js';
 import type { N8nAccountWorkflowCheckResult } from '../lib/accounts/n8n-workflow-health.js';
+import { formatApprovalResumeResult } from '../lib/slack/format-approval-output.js';
 import {
   formatSetCustomValueOutput,
   ghlSetCustomValueSkill,
   setCustomValueInputSchema,
   type SetCustomValueOutput,
 } from '../skills/ghl/set-custom-value.js';
+import {
+  formatTriggerWorkflowOutput,
+  n8nTriggerWorkflowSkill,
+  triggerWorkflowInputSchema,
+  type TriggerWorkflowOutput,
+} from '../skills/n8n/trigger-workflow.js';
+import { parseTriggerN8nCommandArgs } from './mutating-command-args.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 
 import type { SkillContext } from '../skills/_types.js';
@@ -318,9 +326,46 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (subcommand === 'trigger-n8n' || subcommand === 'trigger-n8n-workflow') {
+      if (parts.length < 2) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops trigger-n8n <account name> [workflowId]',
+        });
+        return;
+      }
+
+      try {
+        const parsed = parseTriggerN8nCommandArgs(parts);
+        const output = await runManualTriggerN8nWorkflow(parsed);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatTriggerWorkflowOutput(output),
+        });
+      } catch (err) {
+        if (isApprovalPendingError(err)) {
+          await respond({
+            response_type: 'ephemeral',
+            text: [
+              'Approval required before this workflow can run.',
+              `Approval ID: ${err.approvalId}`,
+              'Approve in #ops-manager-approvals or run `/ops approve <approval-id>`.',
+            ].join('\n'),
+          });
+          return;
+        }
+
+        await respond({
+          response_type: 'ephemeral',
+          text: `Trigger n8n workflow failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -350,18 +395,7 @@ export function formatRecentJobsSummary(
   ].join('\n');
 }
 
-export function formatApprovalResumeResult(output: unknown): string {
-  if (
-    output &&
-    typeof output === 'object' &&
-    'customValueId' in output &&
-    'accountName' in output
-  ) {
-    return formatSetCustomValueOutput(output as SetCustomValueOutput);
-  }
-
-  return 'Approval accepted and job completed.';
-}
+export { formatApprovalResumeResult } from '../lib/slack/format-approval-output.js';
 
 export function formatAccountsSummary(accounts: AccountSummary[]): string {
   const activeCount = accounts.filter((account) => account.status === 'active').length;
@@ -901,6 +935,60 @@ async function runManualSetCustomValue(input: {
       JSON.stringify({
         customValueId: output.customValueId,
         value: output.customValue.value,
+      }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    const status = isApprovalPendingError(err) ? 'awaiting_approval' : 'failed';
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      status,
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+        approvalId: isApprovalPendingError(err) ? err.approvalId : undefined,
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualTriggerN8nWorkflow(input: {
+  accountQuery: string;
+  workflowId?: string;
+}): Promise<TriggerWorkflowOutput> {
+  const jobId = randomUUID();
+  const parsedInput = triggerWorkflowInputSchema.parse(input);
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops trigger-n8n', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await n8nTriggerWorkflowSkill.execute(parsedInput, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        workflowId: output.workflowId,
+        executionId: output.executionId,
       }),
       jobId,
     ]);
