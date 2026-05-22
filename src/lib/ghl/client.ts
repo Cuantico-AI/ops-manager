@@ -51,6 +51,13 @@ export interface GhlCustomField {
   model?: string;
 }
 
+export interface GhlCustomValue {
+  id: string;
+  name: string;
+  value: string;
+  locationId: string;
+}
+
 export interface ListOpportunitiesOptions {
   limit?: number;
   maxPages?: number;
@@ -182,13 +189,70 @@ export class GhlClient {
     return (payload.customFields ?? []).map(parseCustomField).filter(Boolean) as GhlCustomField[];
   }
 
-  private async request(url: URL, pitToken: string): Promise<Response> {
+  async getCustomValue(
+    locationId: string,
+    customValueId: string,
+    pitToken: string,
+  ): Promise<GhlCustomValue> {
+    const url = new URL(
+      `/locations/${encodeURIComponent(locationId)}/customValues/${encodeURIComponent(customValueId)}`,
+      this.baseUrl,
+    );
+    const res = await this.request(url, pitToken);
+    if (!res.ok) {
+      throw await toGhlError('get custom value', res);
+    }
+
+    const payload = (await res.json()) as { customValue?: unknown; value?: unknown };
+    const parsed = parseCustomValue(payload.customValue ?? payload.value ?? payload, locationId);
+    if (!parsed) {
+      throw new ExternalServiceError('GHL custom value response was invalid', 'GHL_API_ERROR');
+    }
+
+    return parsed;
+  }
+
+  async updateCustomValue(
+    locationId: string,
+    customValueId: string,
+    pitToken: string,
+    input: { name: string; value: string },
+  ): Promise<GhlCustomValue> {
+    const url = new URL(
+      `/locations/${encodeURIComponent(locationId)}/customValues/${encodeURIComponent(customValueId)}`,
+      this.baseUrl,
+    );
+    const res = await this.request(url, pitToken, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      throw await toGhlError('update custom value', res);
+    }
+
+    const payload = (await res.json()) as { customValue?: unknown; value?: unknown };
+    const parsed = parseCustomValue(payload.customValue ?? payload.value ?? payload, locationId);
+    if (!parsed) {
+      throw new ExternalServiceError('GHL custom value response was invalid', 'GHL_API_ERROR');
+    }
+
+    return parsed;
+  }
+
+  private async request(
+    url: URL,
+    pitToken: string,
+    opts: { method?: string; body?: string } = {},
+  ): Promise<Response> {
     return fetch(url, {
+      method: opts.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${pitToken}`,
         Version: this.apiVersion,
         Accept: 'application/json',
+        ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
       },
+      body: opts.body,
       signal: AbortSignal.timeout(this.timeoutMs),
     });
   }
@@ -305,6 +369,29 @@ function parseCustomField(value: unknown): GhlCustomField | null {
     dataType: typeof record.dataType === 'string' ? record.dataType : undefined,
     model: typeof record.model === 'string' ? record.model : undefined,
   };
+}
+
+function parseCustomValue(value: unknown, fallbackLocationId: string): GhlCustomValue | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const customValue =
+    typeof record.value === 'string'
+      ? record.value
+      : typeof record.customValue === 'string'
+        ? record.customValue
+        : null;
+  const locationId =
+    typeof record.locationId === 'string' ? record.locationId : fallbackLocationId;
+  if (!id || !name || customValue == null) {
+    return null;
+  }
+
+  return { id, name, value: customValue, locationId };
 }
 
 async function readErrorMessage(res: Response): Promise<string | undefined> {
