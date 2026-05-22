@@ -100,6 +100,7 @@ Phase 4 adds write-capable skills gated by Slack approval in production. With
 
 - `/ops set-custom-value <account> <customValueId> <value>` — update a GHL location custom value
 - `/ops trigger-n8n <account> [workflowId]` — trigger a tracked n8n workflow
+- `/ops refresh-assistable <account>` — refresh Assistable GHL OAuth (approval required)
 - `/ops approve <approval-id>` — approve a pending mutating action
 - `/ops reject <approval-id>` — reject a pending mutating action
 - `/ops jobs` — list recent jobs and statuses

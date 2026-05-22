@@ -134,4 +134,64 @@ describe('AssistableClient', () => {
     );
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('assistable_secret');
   });
+
+  it('posts refresh-oauth with location_id body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: vi.fn().mockResolvedValue(JSON.stringify({ ok: true, message: 'OAuth refreshed' })),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    const result = await client.refreshLocationOAuth({ locationId: 'loc_123' });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('OAuth refreshed');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://api.test/v2/refresh-oauth');
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ location_id: 'loc_123' }),
+    });
+  });
+
+  it('reports route-not-found for missing refresh endpoint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify({ message: 'Route POST:/v2/refresh-oauth not found' }),
+          ),
+      }),
+    );
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    const result = await client.refreshLocationOAuth({ locationId: 'loc_123' });
+
+    expect(result.success).toBe(false);
+    expect(result.routeNotFound).toBe(true);
+    expect(result.message).toContain('Route POST:/v2/refresh-oauth not found');
+  });
+
+  it('reports auth-error when refresh API key is missing', async () => {
+    const client = new AssistableClient({ apiKey: '' });
+    const result = await client.refreshLocationOAuth({ locationId: 'loc_123' });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('ASSISTABLE_API_KEY');
+  });
 });
