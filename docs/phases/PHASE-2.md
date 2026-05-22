@@ -90,7 +90,27 @@ are built.
 
 ## Remaining Phase 2 work
 
-1. `ghl.list-workflows` and `ghl.list-custom-fields` monthly inventory.
+Phase 2 is complete for the planned GHL visibility slices.
+
+## GHL config inventory
+
+Implemented:
+
+- `ghl.list-workflows`
+- `ghl.list-custom-fields`
+- `ghl.inventory`
+- `/ops ghl-inventory <account name>` on-demand report
+- monthly fleet summary on `GHL_CONFIG_INVENTORY_CRON` (default `0 15 1 * *`)
+
+The inventory uses LeadConnector v2:
+
+- `GET /workflows/?locationId=...`
+- `GET /locations/{locationId}/customFields`
+
+PIT tokens must include `workflows.readonly` and
+`locations/customFields.readonly` scope for inventory calls to succeed. A token that
+passes the location health check may still fail here if those narrower scopes are
+missing.
 
 ## GHL pipeline snapshot
 

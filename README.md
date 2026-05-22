@@ -83,6 +83,8 @@ daily scheduled check uses `GHL_TOKEN_HEALTH_CRON`. To diagnose one account, pas
 name: `/ops check-tokens Annie Stern`.
 Run `/ops ghl-snapshot Complete Lending` for a per-account pipeline/opportunity report.
 The weekly fleet summary runs on `GHL_PIPELINE_SNAPSHOT_CRON`.
+Run `/ops ghl-inventory Complete Lending` for a per-account workflow/custom-field report.
+The monthly fleet summary runs on `GHL_CONFIG_INVENTORY_CRON`.
 
 ## Deploy
 

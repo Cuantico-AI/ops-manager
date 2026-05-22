@@ -133,4 +133,74 @@ describe('GhlClient', () => {
     expect(opportunities).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('lists workflows for a location', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: vi.fn().mockResolvedValue({
+          workflows: [
+            {
+              id: 'wf_1',
+              name: 'Welcome Sequence',
+              status: 'published',
+              locationId: 'loc_123',
+              version: 2,
+            },
+          ],
+        }),
+      }),
+    );
+
+    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
+    const workflows = await client.listWorkflows('loc_123', 'pit_secret');
+
+    expect(workflows).toEqual([
+      {
+        id: 'wf_1',
+        name: 'Welcome Sequence',
+        status: 'published',
+        locationId: 'loc_123',
+        version: 2,
+      },
+    ]);
+  });
+
+  it('lists custom fields for a location', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: vi.fn().mockResolvedValue({
+          customFields: [
+            {
+              id: 'cf_1',
+              name: 'Lead Source',
+              fieldKey: 'contact.lead_source',
+              dataType: 'TEXT',
+              model: 'contact',
+            },
+          ],
+        }),
+      }),
+    );
+
+    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
+    const customFields = await client.listCustomFields('loc_123', 'pit_secret');
+
+    expect(customFields).toEqual([
+      {
+        id: 'cf_1',
+        name: 'Lead Source',
+        fieldKey: 'contact.lead_source',
+        dataType: 'TEXT',
+        model: 'contact',
+      },
+    ]);
+  });
 });

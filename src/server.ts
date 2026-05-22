@@ -7,8 +7,11 @@ import { logger } from './lib/logger.js';
 import { closeQueue } from './lib/queue/client.js';
 import { registerScheduledJobs, stopScheduledJobs } from './jobs/_registry.js';
 import { ghlCheckPitTokenSkill } from './skills/ghl/check-pit-token.js';
+import { ghlInventorySkill } from './skills/ghl/inventory.js';
+import { ghlListCustomFieldsSkill } from './skills/ghl/list-custom-fields.js';
 import { ghlListOpportunitiesSkill } from './skills/ghl/list-opportunities.js';
 import { ghlListPipelinesSkill } from './skills/ghl/list-pipelines.js';
+import { ghlListWorkflowsSkill } from './skills/ghl/list-workflows.js';
 import { ghlListAccountsSkill } from './skills/ghl/list-accounts.js';
 import { ghlSnapshotSkill } from './skills/ghl/snapshot.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
@@ -25,7 +28,10 @@ registry.register(ghlListAccountsSkill);
 registry.register(ghlCheckPitTokenSkill);
 registry.register(ghlListPipelinesSkill);
 registry.register(ghlListOpportunitiesSkill);
+registry.register(ghlListWorkflowsSkill);
+registry.register(ghlListCustomFieldsSkill);
 registry.register(ghlSnapshotSkill);
+registry.register(ghlInventorySkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;
 

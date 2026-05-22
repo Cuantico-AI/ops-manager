@@ -34,6 +34,23 @@ export interface GhlOpportunity {
   monetaryValue?: number;
 }
 
+export interface GhlWorkflow {
+  id: string;
+  name: string;
+  status: string;
+  version?: number;
+  locationId: string;
+  updatedAt?: string;
+}
+
+export interface GhlCustomField {
+  id: string;
+  name: string;
+  fieldKey: string;
+  dataType?: string;
+  model?: string;
+}
+
 export interface ListOpportunitiesOptions {
   limit?: number;
   maxPages?: number;
@@ -142,6 +159,29 @@ export class GhlClient {
     return opportunities;
   }
 
+  async listWorkflows(locationId: string, pitToken: string): Promise<GhlWorkflow[]> {
+    const url = new URL('/workflows/', this.baseUrl);
+    url.searchParams.set('locationId', locationId);
+    const res = await this.request(url, pitToken);
+    if (!res.ok) {
+      throw await toGhlError('list workflows', res);
+    }
+
+    const payload = (await res.json()) as { workflows?: unknown[] };
+    return (payload.workflows ?? []).map(parseWorkflow).filter(Boolean) as GhlWorkflow[];
+  }
+
+  async listCustomFields(locationId: string, pitToken: string): Promise<GhlCustomField[]> {
+    const url = new URL(`/locations/${encodeURIComponent(locationId)}/customFields`, this.baseUrl);
+    const res = await this.request(url, pitToken);
+    if (!res.ok) {
+      throw await toGhlError('list custom fields', res);
+    }
+
+    const payload = (await res.json()) as { customFields?: unknown[] };
+    return (payload.customFields ?? []).map(parseCustomField).filter(Boolean) as GhlCustomField[];
+  }
+
   private async request(url: URL, pitToken: string): Promise<Response> {
     return fetch(url, {
       headers: {
@@ -213,6 +253,57 @@ function parseOpportunity(value: unknown): GhlOpportunity | null {
     pipelineStageId,
     status,
     monetaryValue: typeof record.monetaryValue === 'number' ? record.monetaryValue : undefined,
+  };
+}
+
+function parseWorkflow(value: unknown): GhlWorkflow | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const status = typeof record.status === 'string' ? record.status : 'unknown';
+  const locationId = typeof record.locationId === 'string' ? record.locationId : '';
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    status,
+    version: typeof record.version === 'number' ? record.version : undefined,
+    locationId,
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+  };
+}
+
+function parseCustomField(value: unknown): GhlCustomField | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const fieldKey =
+    typeof record.fieldKey === 'string'
+      ? record.fieldKey
+      : typeof record.key === 'string'
+        ? record.key
+        : null;
+  if (!id || !name || !fieldKey) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    fieldKey,
+    dataType: typeof record.dataType === 'string' ? record.dataType : undefined,
+    model: typeof record.model === 'string' ? record.model : undefined,
   };
 }
 
