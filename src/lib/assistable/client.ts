@@ -17,7 +17,19 @@ export interface CheckLocationConnectionResult {
   message?: string;
 }
 
+export interface RefreshLocationOAuthInput {
+  locationId: string;
+}
+
+export interface RefreshLocationOAuthResult {
+  success: boolean;
+  httpStatus?: number;
+  message?: string;
+  routeNotFound?: boolean;
+}
+
 const DEFAULT_ASSISTABLE_API_BASE_URL = 'https://api.assistable.ai';
+const DEFAULT_ASSISTABLE_REFRESH_OAUTH_PATH = '/v2/refresh-oauth';
 const DEFAULT_ASSISTABLE_TIMEOUT_MS = 15_000;
 const HEALTH_PROBE_CONTACT_ID = 'ops-manager-health-probe';
 
@@ -107,6 +119,74 @@ export class AssistableClient {
 
     return {
       status: 'unreachable',
+      httpStatus: res.status,
+      message,
+    };
+  }
+
+  async refreshLocationOAuth(
+    input: RefreshLocationOAuthInput,
+  ): Promise<RefreshLocationOAuthResult> {
+    if (!this.apiKey) {
+      return {
+        success: false,
+        message: 'ASSISTABLE_API_KEY is not configured',
+      };
+    }
+
+    const path =
+      process.env.ASSISTABLE_REFRESH_OAUTH_PATH?.trim() || DEFAULT_ASSISTABLE_REFRESH_OAUTH_PATH;
+    const url = new URL(path, this.baseUrl);
+    let res: Response;
+
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ location_id: input.locationId }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    const message = await readResponseMessage(res);
+    if (isRouteNotFound(message, res.status)) {
+      return {
+        success: false,
+        httpStatus: res.status,
+        message:
+          message ??
+          `Assistable refresh route not found at ${path}; reset OAuth manually in the Assistable dashboard (Agency-Level Settings > Reset Connection)`,
+        routeNotFound: true,
+      };
+    }
+
+    if (res.status === 401) {
+      return {
+        success: false,
+        httpStatus: res.status,
+        message: message ?? 'Assistable API rejected the request (401 Unauthorized)',
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        success: false,
+        httpStatus: res.status,
+        message: message ?? `Assistable refresh failed: ${res.status} ${res.statusText}`,
+      };
+    }
+
+    return {
+      success: true,
       httpStatus: res.status,
       message,
     };

@@ -33,10 +33,16 @@ Reject via button or `/ops reject <approval-id>`.
 - `n8n.trigger-workflow` — execute a tracked client workflow on demand
 - `/ops trigger-n8n <account> [workflowId]`
 
-## Slice 3 (next)
+## Slice 3 (this PR)
 
 - `assistable.refresh-oauth` — refresh Assistable GHL OAuth for disconnected accounts
 - `/ops refresh-assistable <account>`
+
+Assistable does not publish a public refresh-OAuth API route. Ops Manager calls a
+configurable endpoint (`ASSISTABLE_REFRESH_OAUTH_PATH`, default `/v2/refresh-oauth`) and
+re-verifies connection via the existing health probe. If the route is missing, the
+command fails with instructions to reset OAuth manually in the Assistable dashboard
+(Agency-Level Settings > Reset Connection).
 
 ## Required env vars
 
@@ -49,4 +55,5 @@ Add these to the droplet `.env` only:
 
 SLACK_APPROVALS_CHANNEL=#ops-manager-approvals
 # APPROVAL_EXPIRY_HOURS=4
+# ASSISTABLE_REFRESH_OAUTH_PATH=/v2/refresh-oauth
 ```

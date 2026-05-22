@@ -23,6 +23,12 @@ import {
   type CheckN8nWorkflowHealthOutput,
 } from '../skills/n8n/check-workflow-health.js';
 import {
+  formatRefreshAssistableOAuthOutput,
+  assistableRefreshOAuthSkill,
+  refreshAssistableOAuthInputSchema,
+  type RefreshAssistableOAuthOutput,
+} from '../skills/assistable/refresh-oauth.js';
+import {
   checkAssistableOAuthInputSchema,
   assistableCheckOAuthStatusSkill,
   type CheckAssistableOAuthOutput,
@@ -363,9 +369,45 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (subcommand === 'refresh-assistable' || subcommand === 'refresh-assistable-oauth') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops refresh-assistable <account name>',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualRefreshAssistableOAuth(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatRefreshAssistableOAuthOutput(output),
+        });
+      } catch (err) {
+        if (isApprovalPendingError(err)) {
+          await respond({
+            response_type: 'ephemeral',
+            text: [
+              'Approval required before Assistable OAuth can be refreshed.',
+              `Approval ID: ${err.approvalId}`,
+              'Approve in #ops-manager-approvals or run `/ops approve <approval-id>`.',
+            ].join('\n'),
+          });
+          return;
+        }
+
+        await respond({
+          response_type: 'ephemeral',
+          text: `Refresh Assistable OAuth failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -989,6 +1031,59 @@ async function runManualTriggerN8nWorkflow(input: {
       JSON.stringify({
         workflowId: output.workflowId,
         executionId: output.executionId,
+      }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    const status = isApprovalPendingError(err) ? 'awaiting_approval' : 'failed';
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      status,
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+        approvalId: isApprovalPendingError(err) ? err.approvalId : undefined,
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualRefreshAssistableOAuth(
+  accountQuery: string,
+): Promise<RefreshAssistableOAuthOutput> {
+  const jobId = randomUUID();
+  const parsedInput = refreshAssistableOAuthInputSchema.parse({ accountQuery });
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops refresh-assistable', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await assistableRefreshOAuthSkill.execute(parsedInput, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        previousStatus: output.previousStatus,
+        currentStatus: output.currentStatus,
       }),
       jobId,
     ]);

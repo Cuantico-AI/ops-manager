@@ -17,6 +17,7 @@ import { ghlListWorkflowsSkill } from './skills/ghl/list-workflows.js';
 import { ghlListAccountsSkill } from './skills/ghl/list-accounts.js';
 import { ghlSnapshotSkill } from './skills/ghl/snapshot.js';
 import { n8nTriggerWorkflowSkill } from './skills/n8n/trigger-workflow.js';
+import { assistableRefreshOAuthSkill } from './skills/assistable/refresh-oauth.js';
 import { ghlSetCustomValueSkill } from './skills/ghl/set-custom-value.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
@@ -40,6 +41,7 @@ registry.register(ghlSnapshotSkill);
 registry.register(ghlInventorySkill);
 registry.register(ghlSetCustomValueSkill);
 registry.register(n8nTriggerWorkflowSkill);
+registry.register(assistableRefreshOAuthSkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;
 
