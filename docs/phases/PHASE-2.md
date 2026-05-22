@@ -90,7 +90,22 @@ are built.
 
 ## Remaining Phase 2 work
 
-1. `ghl.list-pipelines` and `ghl.list-opportunities` weekly snapshot.
-2. `ghl.list-workflows` and `ghl.list-custom-fields` monthly inventory.
-3. `/ops ghl-snapshot <account-name>` per-account report.
+1. `ghl.list-workflows` and `ghl.list-custom-fields` monthly inventory.
+
+## GHL pipeline snapshot
+
+Implemented:
+
+- `ghl.list-pipelines`
+- `ghl.list-opportunities`
+- `ghl.snapshot`
+- `/ops ghl-snapshot <account name>` on-demand report
+- weekly fleet summary on `GHL_PIPELINE_SNAPSHOT_CRON` (default `0 14 * * 1`)
+
+The snapshot uses LeadConnector v2:
+
+- `GET /opportunities/pipelines?locationId=...`
+- `GET /opportunities/search?location_id=...`
+
+PIT tokens must include `opportunities.readonly` scope for snapshot calls to succeed.
 
