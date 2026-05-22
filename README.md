@@ -93,6 +93,19 @@ n8n report. When `FLEET_DAILY_HEALTH_ENABLED` is true (default), the daily sched
 job posts one threaded summary instead of three separate alerts. Phase 3 scope:
 [docs/phases/PHASE-3.md](./docs/phases/PHASE-3.md).
 
+## Phase 4 mutating ops
+
+Phase 4 adds write-capable skills gated by Slack approval in production. With
+`BYPASS_APPROVAL=true` in local dev, mutating commands run immediately.
+
+- `/ops set-custom-value <account> <customValueId> <value>` — update a GHL location custom value
+- `/ops approve <approval-id>` — approve a pending mutating action
+- `/ops reject <approval-id>` — reject a pending mutating action
+- `/ops jobs` — list recent jobs and statuses
+
+Pending approvals post to `SLACK_APPROVALS_CHANNEL` (default `#ops-manager-approvals`)
+with Approve/Reject buttons. Phase 4 scope: [docs/phases/PHASE-4.md](./docs/phases/PHASE-4.md).
+
 ## Deploy
 
 **Canonical deployment:** the DigitalOcean droplet at **`147.182.131.74`**, repo checked out at **`/opt/ops-manager`** (tracks `main`). The laptop `docker compose` stack [above](#local-dev-quickstart) is **local dev only** — this droplet is the source of truth for running ops-manager.

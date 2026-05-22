@@ -16,6 +16,7 @@ import { ghlListPipelinesSkill } from './skills/ghl/list-pipelines.js';
 import { ghlListWorkflowsSkill } from './skills/ghl/list-workflows.js';
 import { ghlListAccountsSkill } from './skills/ghl/list-accounts.js';
 import { ghlSnapshotSkill } from './skills/ghl/snapshot.js';
+import { ghlSetCustomValueSkill } from './skills/ghl/set-custom-value.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
 import { startBoltApp, stopBoltApp } from './slack/bot.js';
@@ -36,6 +37,7 @@ registry.register(ghlListWorkflowsSkill);
 registry.register(ghlListCustomFieldsSkill);
 registry.register(ghlSnapshotSkill);
 registry.register(ghlInventorySkill);
+registry.register(ghlSetCustomValueSkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;
 
@@ -53,7 +55,7 @@ async function main(): Promise<void> {
   await fastify.listen({ port, host: '0.0.0.0' });
   logger.info({ port, version }, 'HTTP server listening');
 
-  await startBoltApp();
+  await startBoltApp(registry);
   logger.info('Slack Bolt app started (Socket Mode)');
 
   await registerScheduledJobs(registry);

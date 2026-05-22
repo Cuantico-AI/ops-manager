@@ -7,7 +7,13 @@ import {
   type RosterSyncSummary,
 } from '../lib/accounts/google-sheet-roster.js';
 import { auditLogger } from '../lib/audit/log.js';
-import { approvalGate } from '../lib/approval/gate.js';
+import { approvalGate, isApprovalPendingError } from '../lib/approval/gate.js';
+import {
+  approveAndResumeJob,
+  assertApprovalId,
+  rejectApprovalRequest,
+} from '../lib/approval/resume.js';
+import { listRecentJobs } from '../lib/approval/store.js';
 import { query } from '../lib/db/client.js';
 import { formatFleetDailyHealthOverview, type FleetDailyHealthChecks } from '../lib/health/fleet-daily-summary.js';
 import { llmClient } from '../lib/llm/client.js';
@@ -39,11 +45,19 @@ import {
   type GhlSnapshotOutput,
 } from '../skills/ghl/snapshot.js';
 import type { N8nAccountWorkflowCheckResult } from '../lib/accounts/n8n-workflow-health.js';
+import {
+  formatSetCustomValueOutput,
+  ghlSetCustomValueSkill,
+  setCustomValueInputSchema,
+  type SetCustomValueOutput,
+} from '../skills/ghl/set-custom-value.js';
+import type { SkillRegistry } from '../skills/_registry.js';
+
 import type { SkillContext } from '../skills/_types.js';
 
 const startTime = Date.now();
 
-export function registerCommands(app: App): void {
+export function registerCommands(app: App, registry: SkillRegistry): void {
   app.command('/ops', async ({ command, ack, respond }) => {
     await ack();
 
@@ -198,11 +212,155 @@ export function registerCommands(app: App): void {
       return;
     }
 
+    if (subcommand === 'jobs') {
+      try {
+        const jobs = await listRecentJobs(20);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatRecentJobsSummary(jobs),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Jobs list failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (subcommand === 'approve') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops approve <approval-id>',
+        });
+        return;
+      }
+
+      try {
+        const approvalId = assertApprovalId(args);
+        const output = await approveAndResumeJob(registry, approvalId, command.user_id);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatApprovalResumeResult(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Approve failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (subcommand === 'reject') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops reject <approval-id>',
+        });
+        return;
+      }
+
+      try {
+        const approvalId = assertApprovalId(args);
+        await rejectApprovalRequest(approvalId, command.user_id);
+        await respond({
+          response_type: 'ephemeral',
+          text: `Approval ${approvalId} rejected.`,
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Reject failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (subcommand === 'set-custom-value') {
+      if (parts.length < 4) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops set-custom-value <account name> <customValueId> <value>',
+        });
+        return;
+      }
+
+      const customValueId = parts[parts.length - 2] ?? '';
+      const value = parts[parts.length - 1] ?? '';
+      const accountQuery = parts.slice(1, -2).join(' ');
+
+      try {
+        const output = await runManualSetCustomValue({ accountQuery, customValueId, value });
+        await respond({
+          response_type: 'ephemeral',
+          text: formatSetCustomValueOutput(output),
+        });
+      } catch (err) {
+        if (isApprovalPendingError(err)) {
+          await respond({
+            response_type: 'ephemeral',
+            text: [
+              'Approval required before this write can run.',
+              `Approval ID: ${err.approvalId}`,
+              'Approve in #ops-manager-approvals or run `/ops approve <approval-id>`.',
+            ].join('\n'),
+          });
+          return;
+        }
+
+        await respond({
+          response_type: 'ephemeral',
+          text: `Set custom value failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
+}
+
+export function formatRecentJobsSummary(
+  jobs: Array<{
+    id: string;
+    agentId: string;
+    triggerType: string;
+    status: string;
+    startedAt: string;
+    completedAt: string | null;
+  }>,
+): string {
+  if (jobs.length === 0) {
+    return 'No recent jobs found.';
+  }
+
+  return [
+    'Recent jobs:',
+    ...jobs.map(
+      (job) =>
+        `• ${job.id} — ${job.status} (${job.triggerType}, started ${job.startedAt})${
+          job.completedAt ? `, completed ${job.completedAt}` : ''
+        }`,
+    ),
+  ].join('\n');
+}
+
+export function formatApprovalResumeResult(output: unknown): string {
+  if (
+    output &&
+    typeof output === 'object' &&
+    'customValueId' in output &&
+    'accountName' in output
+  ) {
+    return formatSetCustomValueOutput(output as SetCustomValueOutput);
+  }
+
+  return 'Approval accepted and job completed.';
 }
 
 export function formatAccountsSummary(accounts: AccountSummary[]): string {
@@ -700,6 +858,61 @@ async function runManualGhlSnapshot(accountQuery: string): Promise<GhlSnapshotOu
       JSON.stringify({
         message: err instanceof Error ? err.message : String(err),
         name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualSetCustomValue(input: {
+  accountQuery: string;
+  customValueId: string;
+  value: string;
+}): Promise<SetCustomValueOutput> {
+  const jobId = randomUUID();
+  const parsedInput = setCustomValueInputSchema.parse(input);
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'system',
+      'manual',
+      JSON.stringify({ command: '/ops set-custom-value', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'system',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await ghlSetCustomValueSkill.execute(parsedInput, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        customValueId: output.customValueId,
+        value: output.customValue.value,
+      }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    const status = isApprovalPendingError(err) ? 'awaiting_approval' : 'failed';
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      status,
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+        approvalId: isApprovalPendingError(err) ? err.approvalId : undefined,
       }),
       jobId,
     ]);

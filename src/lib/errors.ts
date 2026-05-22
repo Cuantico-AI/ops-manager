@@ -41,3 +41,37 @@ export class ApprovalNotImplementedError extends AppError {
     this.name = 'ApprovalNotImplementedError';
   }
 }
+
+export class ApprovalPendingError extends AppError {
+  readonly approvalId: string;
+
+  constructor(approvalId: string) {
+    super(
+      `Approval required before this action can run (${approvalId})`,
+      'APPROVAL_PENDING',
+      202,
+    );
+    this.name = 'ApprovalPendingError';
+    this.approvalId = approvalId;
+  }
+}
+
+export class ApprovalRejectedError extends AppError {
+  readonly approvalId: string;
+
+  constructor(approvalId: string) {
+    super(`Approval ${approvalId} was rejected`, 'APPROVAL_REJECTED', 409);
+    this.name = 'ApprovalRejectedError';
+    this.approvalId = approvalId;
+  }
+}
+
+export class ApprovalExpiredError extends AppError {
+  readonly approvalId: string;
+
+  constructor(approvalId: string) {
+    super(`Approval ${approvalId} has expired`, 'APPROVAL_EXPIRED', 409);
+    this.name = 'ApprovalExpiredError';
+    this.approvalId = approvalId;
+  }
+}
