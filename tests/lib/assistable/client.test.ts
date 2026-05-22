@@ -14,20 +14,18 @@ describe('AssistableClient', () => {
     expect(result.message).toContain('ASSISTABLE_API_KEY');
   });
 
-  it.each([
-    [200, 'OK', 'connected'],
-    [401, 'Unauthorized', 'auth-error'],
-    [403, 'Forbidden', 'disconnected'],
-    [404, 'Not Found', 'not_found'],
-    [503, 'Unavailable', 'unreachable'],
-  ] as const)('maps HTTP %s to %s', async (status, statusText, expected) => {
+  it('treats a GHL conversation miss as connected OAuth', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
-        ok: status >= 200 && status < 300,
-        status,
-        statusText,
-        text: vi.fn().mockResolvedValue('test error'),
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify({ ok: false, error: 'No GHL conversation found for contact' }),
+          ),
       }),
     );
 
@@ -38,40 +36,20 @@ describe('AssistableClient', () => {
     });
     const result = await client.checkLocationConnection({ locationId: 'loc_123' });
 
-    expect(result.status).toBe(expected);
-    if (status !== 200) {
-      expect(result.message).toBe('test error');
-    }
+    expect(result.status).toBe('connected');
+    expect(result.message).toContain('No GHL conversation found for contact');
   });
 
-  it('does not put the API key into the request URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      text: vi.fn().mockResolvedValue(''),
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const client = new AssistableClient({
-      baseUrl: 'https://api.test',
-      apiKey: 'assistable_secret',
-      timeoutMs: 100,
-    });
-    await client.checkLocationConnection({ locationId: 'loc_123' });
-
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://api.test/v2/get-contacts/loc_123');
-    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('assistable_secret');
-  });
-
-  it('treats CRM connection errors as disconnected', async () => {
+  it('treats missing GHL access token as disconnected', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        text: vi.fn().mockResolvedValue('No Active CRM Connection for this location'),
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: vi
+          .fn()
+          .mockResolvedValue(JSON.stringify({ ok: false, error: 'No access token for location' })),
       }),
     );
 
@@ -83,5 +61,77 @@ describe('AssistableClient', () => {
     const result = await client.checkLocationConnection({ locationId: 'loc_123' });
 
     expect(result.status).toBe('disconnected');
+  });
+
+  it('maps HTTP 401 to auth-error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: vi.fn().mockResolvedValue('Unauthorized'),
+      }),
+    );
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    const result = await client.checkLocationConnection({ locationId: 'loc_123' });
+
+    expect(result.status).toBe('auth-error');
+  });
+
+  it('maps removed routes to unreachable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: vi
+          .fn()
+          .mockResolvedValue(
+            JSON.stringify({ message: 'Route GET:/v2/get-contacts/loc_123 not found' }),
+          ),
+      }),
+    );
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    const result = await client.checkLocationConnection({ locationId: 'loc_123' });
+
+    expect(result.status).toBe('unreachable');
+  });
+
+  it('uses get-conversation with a probe contact id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: vi
+        .fn()
+        .mockResolvedValue(
+          JSON.stringify({ ok: false, error: 'No GHL conversation found for contact' }),
+        ),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AssistableClient({
+      baseUrl: 'https://api.test',
+      apiKey: 'assistable_secret',
+      timeoutMs: 100,
+    });
+    await client.checkLocationConnection({ locationId: 'loc_123' });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://api.test/v2/get-conversation?location_id=loc_123&contact_id=ops-manager-health-probe',
+    );
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('assistable_secret');
   });
 });
