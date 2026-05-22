@@ -8,19 +8,21 @@ connection status across the fleet.
 `assistable.check-oauth-status` validates whether each account's Assistable location can
 reach GoHighLevel through Assistable.
 
-Assistable does not publish a dedicated OAuth status endpoint. The check uses a
-lightweight location probe:
+Assistable does not publish a dedicated OAuth status endpoint. During the API3
+migration, the documented `GET /v2/get-contacts/{location_id}` route may return
+404 even when the location is healthy. The check uses a read-only conversation
+probe instead:
 
-- `GET https://api.assistable.ai/v2/get-contacts/{location_id}`
+- `GET https://api.assistable.ai/v2/get-conversation?location_id=...&contact_id=ops-manager-health-probe`
 - `Authorization: Bearer <ASSISTABLE_API_KEY>`
 
 Statuses:
 
 | Status | Meaning |
 | --- | --- |
-| `connected` | Assistable returned 2xx for the location probe |
-| `disconnected` | Assistable returned 403 or a CRM/OAuth connection error |
-| `not_found` | Assistable returned 404 for the location ID |
+| `connected` | Assistable returned 2xx and the location has a usable GHL access token. A probe contact with no conversation still counts as connected. |
+| `disconnected` | Assistable reported no GHL access token / CRM connection for the location |
+| `not_found` | Assistable returned 404 for the location probe |
 | `auth-error` | Assistable returned 401, or `ASSISTABLE_API_KEY` is missing |
 | `unreachable` | Network timeout, 5xx, or other transient failure |
 | `missing-subaccount-id` | Account has no Assistable subaccount ID or GHL location ID to probe |

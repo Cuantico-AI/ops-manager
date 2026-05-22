@@ -261,8 +261,9 @@ export function formatAssistableOAuthCheckSummary(output: CheckAssistableOAuthOu
       onlyResult.locationSource ? `Location source: ${onlyResult.locationSource}` : '',
       `HTTP status: ${onlyResult.httpStatus ?? 'n/a'}`,
       onlyResult.status === 'connected'
-        ? 'Note: connected means Assistable returned 2xx for the location probe; re-check in Assistable if CRM actions still fail.'
+        ? 'Note: connected means Assistable sees a GHL access token for this location; a missing probe conversation is expected.'
         : '',
+      onlyResult.message ? `Assistable message: ${onlyResult.message}` : '',
     ]
       .filter(Boolean)
       .join('\n');

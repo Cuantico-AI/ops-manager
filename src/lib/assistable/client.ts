@@ -19,8 +19,10 @@ export interface CheckLocationConnectionResult {
 
 const DEFAULT_ASSISTABLE_API_BASE_URL = 'https://api.assistable.ai';
 const DEFAULT_ASSISTABLE_TIMEOUT_MS = 15_000;
+const HEALTH_PROBE_CONTACT_ID = 'ops-manager-health-probe';
 
 const DISCONNECTED_PATTERNS = [
+  'no access token for location',
   'no active crm connection',
   'crm connection',
   'oauth',
@@ -29,6 +31,8 @@ const DISCONNECTED_PATTERNS = [
   're-authorize',
   'reauthorize',
 ];
+
+const CONNECTED_PATTERNS = ['no ghl conversation found for contact'];
 
 export class AssistableClient {
   private readonly baseUrl: string;
@@ -52,10 +56,9 @@ export class AssistableClient {
       };
     }
 
-    const url = new URL(
-      `/v2/get-contacts/${encodeURIComponent(input.locationId)}`,
-      this.baseUrl,
-    );
+    const url = new URL('/v2/get-conversation', this.baseUrl);
+    url.searchParams.set('location_id', input.locationId);
+    url.searchParams.set('contact_id', HEALTH_PROBE_CONTACT_ID);
     let res: Response;
 
     try {
@@ -73,14 +76,28 @@ export class AssistableClient {
       };
     }
 
-    if (res.ok) {
-      return { status: 'connected', httpStatus: res.status };
-    }
-
-    const message = await readErrorMessage(res);
+    const message = await readResponseMessage(res);
     if (res.status === 401) {
       return { status: 'auth-error', httpStatus: res.status, message };
     }
+
+    if (isRouteNotFound(message, res.status)) {
+      return {
+        status: 'unreachable',
+        httpStatus: res.status,
+        message:
+          message ??
+          'Assistable route not found; the platform may have migrated away from this endpoint',
+      };
+    }
+
+    if (res.ok) {
+      const mapped = mapConversationProbe(message);
+      if (mapped) {
+        return { status: mapped, httpStatus: res.status, message };
+      }
+    }
+
     if (res.status === 404) {
       return { status: 'not_found', httpStatus: res.status, message };
     }
@@ -96,6 +113,29 @@ export class AssistableClient {
   }
 }
 
+function mapConversationProbe(message?: string): AssistableOAuthStatus | null {
+  if (!message) {
+    return 'connected';
+  }
+
+  const normalized = message.toLowerCase();
+  if (CONNECTED_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return 'connected';
+  }
+  if (DISCONNECTED_PATTERNS.some((pattern) => normalized.includes(pattern))) {
+    return 'disconnected';
+  }
+  return null;
+}
+
+function isRouteNotFound(message: string | undefined, status: number): boolean {
+  if (status !== 404 || !message) {
+    return false;
+  }
+
+  return message.includes('Route ') && message.includes(' not found');
+}
+
 function looksLikeDisconnected(message?: string): boolean {
   if (!message) {
     return false;
@@ -105,18 +145,34 @@ function looksLikeDisconnected(message?: string): boolean {
   return DISCONNECTED_PATTERNS.some((pattern) => normalized.includes(pattern));
 }
 
-async function readErrorMessage(res: Response): Promise<string | undefined> {
+async function readResponseMessage(res: Response): Promise<string | undefined> {
   try {
     const body = await res.text();
     const trimmed = body.trim();
-    return trimmed ? trimmed.slice(0, 500) : undefined;
+    if (!trimmed) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as { error?: unknown; message?: unknown };
+      if (typeof parsed.error === 'string' && parsed.error.trim()) {
+        return parsed.error.trim().slice(0, 500);
+      }
+      if (typeof parsed.message === 'string' && parsed.message.trim()) {
+        return parsed.message.trim().slice(0, 500);
+      }
+    } catch {
+      // Fall through to raw text.
+    }
+
+    return trimmed.slice(0, 500);
   } catch {
     return undefined;
   }
 }
 
 export async function toAssistableError(action: string, res: Response): Promise<ExternalServiceError> {
-  const body = await readErrorMessage(res);
+  const body = await readResponseMessage(res);
   const detail = body ? `: ${body}` : '';
   return new ExternalServiceError(
     `Assistable ${action} failed: ${res.status} ${res.statusText}${detail}`,
