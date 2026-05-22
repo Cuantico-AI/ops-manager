@@ -22,6 +22,7 @@ export interface GhlTokenCheckResult {
   status: AccountTokenHealthStatus;
   httpStatus?: number;
   message?: string;
+  tokenFingerprint?: string;
   checkedAt: string;
 }
 
@@ -40,6 +41,7 @@ export interface GhlTokenCheckSummary {
 
 export async function listAccountsForGhlTokenCheck(opts: {
   accountId?: string;
+  accountQuery?: string;
   includeInactive?: boolean;
 }): Promise<GhlAccountForTokenCheck[]> {
   const clauses: string[] = [];
@@ -48,6 +50,11 @@ export async function listAccountsForGhlTokenCheck(opts: {
   if (opts.accountId) {
     params.push(opts.accountId);
     clauses.push(`id = $${params.length}`);
+  }
+
+  if (opts.accountQuery) {
+    params.push(`%${opts.accountQuery}%`);
+    clauses.push(`name ILIKE $${params.length}`);
   }
 
   if (!opts.includeInactive) {
@@ -94,6 +101,7 @@ export async function saveGhlTokenCheckResult(result: GhlTokenCheckResult): Prom
           status: result.status,
           httpStatus: result.httpStatus ?? null,
           checkedAt: result.checkedAt,
+          tokenFingerprint: result.tokenFingerprint ?? null,
           message: result.message ?? null,
         },
       }),

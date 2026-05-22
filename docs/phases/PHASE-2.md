@@ -72,10 +72,21 @@ Statuses:
 | `missing-location` | Account has no GHL location ID |
 | `secret-error` | Encrypted PIT token could not be read/decrypted |
 
-Operators can run `/ops check-tokens` on demand. A scheduled daily job runs on
+Operators can run `/ops check-tokens` on demand, or target one account by name:
+`/ops check-tokens Annie Stern`. A scheduled daily job runs on
 `GHL_TOKEN_HEALTH_CRON` (default `15 13 * * *`) and posts a summary to
 `SLACK_ALERTS_CHANNEL`. Results are stored on each account as `ghl_token_status`,
 `ghl_token_checked_at`, and `metadata.ghlTokenHealth`.
+
+For single-account checks, Slack includes a short SHA-256 token fingerprint. This is
+not the token; it is only a safe way to confirm whether a rotated token actually made
+it from the Sheet into encrypted storage. The roster sync also normalizes common paste
+forms such as `Bearer <token>` and surrounding quotes before encrypting the PIT.
+
+Important limitation: `valid` means the PIT can read the LeadConnector location endpoint
+for that location. A later endpoint can still fail if the PIT lacks narrower scopes for
+that operation; those scope checks should be added as the corresponding Phase 2 skills
+are built.
 
 ## Remaining Phase 2 work
 

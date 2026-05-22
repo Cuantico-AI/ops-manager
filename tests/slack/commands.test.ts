@@ -86,6 +86,8 @@ describe('Slack command formatters', () => {
           accountName: 'Complete Lending',
           ghlLocationId: 'loc_123',
           status: 'valid',
+          httpStatus: 200,
+          tokenFingerprint: 'abc123def456',
           checkedAt: '2026-05-21T00:00:00.000Z',
         },
         {
@@ -104,6 +106,41 @@ describe('Slack command formatters', () => {
     expect(text).toContain('Needs attention: 1');
     expect(text).toContain('• Bad Token Account — invalid');
     expect(text).not.toContain('pit_secret');
+    expect(text).not.toContain('secret:');
+  });
+
+  it('formats single-account token diagnostics with a fingerprint only', () => {
+    const text = formatGhlTokenCheckSummary({
+      checkedAt: '2026-05-21T00:00:00.000Z',
+      summary: {
+        total: 1,
+        valid: 1,
+        invalid: 0,
+        forbidden: 0,
+        notFound: 0,
+        missingToken: 0,
+        missingLocation: 0,
+        secretError: 0,
+        unreachable: 0,
+        needsAttention: 0,
+      },
+      results: [
+        {
+          accountId: 'account-1',
+          accountName: 'Annie Stern',
+          ghlLocationId: 'loc_123',
+          status: 'valid',
+          httpStatus: 200,
+          tokenFingerprint: 'abc123def456',
+          checkedAt: '2026-05-21T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(text).toContain('Account: Annie Stern');
+    expect(text).toContain('Token fingerprint: sha256:abc123def456');
+    expect(text).toContain('valid means this PIT can read');
+    expect(text).not.toContain('pit_');
     expect(text).not.toContain('secret:');
   });
 });

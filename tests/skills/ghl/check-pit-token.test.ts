@@ -36,7 +36,7 @@ describe('ghl.check-pit-token skill', () => {
     const tokenRef = await secretStore.upsertSecret({
       id: `account:${accountId}:ghl-pit-token`,
       kind: 'ghl-pit-token',
-      plaintext: pitToken,
+      plaintext: `Bearer ${pitToken}`,
     });
     await query('UPDATE accounts SET ghl_pit_token_ref = $1 WHERE id = $2', [tokenRef, accountId]);
 
@@ -85,6 +85,7 @@ describe('ghl.check-pit-token skill', () => {
       metadata: Record<string, unknown>;
     }>('SELECT ghl_token_status, metadata FROM accounts WHERE id = $1', [accountId]);
     expect(accountRows.rows[0]?.ghl_token_status).toBe('valid');
+    expect(JSON.stringify(accountRows.rows[0]?.metadata)).toContain('tokenFingerprint');
     expect(JSON.stringify(accountRows.rows[0]?.metadata)).not.toContain(pitToken);
 
     const auditRows = await query<{ input: unknown; output: unknown }>(

@@ -3,6 +3,7 @@ import { parse } from 'csv-parse/sync';
 import type pg from 'pg';
 import { getPool, query } from '../db/client.js';
 import { ExternalServiceError, ValidationError } from '../errors.js';
+import { fingerprintPitToken, normalizePitToken } from '../ghl/token-utils.js';
 import { PostgresSecretStore, type SecretStore } from '../secrets/store.js';
 
 const MAX_ROSTER_CSV_BYTES = 5 * 1024 * 1024;
@@ -546,15 +547,17 @@ async function resolveTokenRef(
   injectedStore: SecretStore | undefined,
 ): Promise<string | null> {
   if (row.ghlPitToken) {
+    const pitToken = normalizePitToken(row.ghlPitToken);
     const secretStore = injectedStore ?? new PostgresSecretStore();
     return secretStore.upsertSecret(
       {
         id: `account:${accountId}:ghl-pit-token`,
         kind: 'ghl-pit-token',
-        plaintext: row.ghlPitToken,
+        plaintext: pitToken,
         metadata: {
           accountId,
           source: 'google-sheet-roster',
+          fingerprint: fingerprintPitToken(pitToken),
         },
       },
       client,
