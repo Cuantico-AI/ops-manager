@@ -43,10 +43,30 @@ Each review returns:
 - Single-turn LLM call (no tool-calling agent loop)
 - Results stored on the job record only (no dedicated `qa_reviews` table)
 
-## Slice 2 (next)
+## Slice 2 (this PR) — Auto QA from Assistable post-call webhooks
 
-- Fetch recent call transcripts from Assistable API (when endpoint is confirmed)
-- Optional scheduled batch QA for flagged accounts
+Policy (designed for ~1M calls/month):
+
+| Rule | Default |
+| --- | --- |
+| Auto QA model | Haiku (`QA_AUTO_REVIEW_MODEL=ops-claude-haiku`) |
+| Escalation model | Sonnet on Haiku FAIL (`QA_REVIEW_ESCALATION_MODEL=ops-claude-sonnet`) |
+| Random sample | 1.5% of eligible calls (`QA_REVIEW_SAMPLE_RATE=0.015`) |
+| Always review | Negative sentiment, negative tags, `ai_call_error_*` tags, failed task completion |
+| Skip | Under 90s, voicemail/machine/no-answer/busy tags, missing transcript/location |
+| Slack alerts | Flagged reviews only (negative, error, failed task, QA FAIL, Sonnet escalation) |
+
+Webhook endpoint:
+
+```
+POST https://<ops-manager-host>/webhooks/assistable/post-call
+Header: X-Ops-Webhook-Secret: <ASSISTABLE_POST_CALL_WEBHOOK_SECRET>
+```
+
+Assistable/GHL post-call workflows must include `location_id`, `call_id`, `full_transcript`,
+`call_time_seconds`, `user_sentiment`, and optional `tags` / `contact_tags`.
+
+Set `QA_AUTO_REVIEW_ENABLED=true` on the droplet after wiring the webhook.
 
 ## Slice 3 (next)
 
@@ -64,4 +84,17 @@ ANTHROPIC_API_KEY=
 # Optional:
 # QA_REVIEW_MODEL=ops-claude-sonnet
 # QA_REVIEW_MAX_TRANSCRIPT_CHARS=50000
+
+# Phase 5 slice 2 — auto QA from Assistable post-call webhooks
+# QA_AUTO_REVIEW_ENABLED=true
+# ASSISTABLE_POST_CALL_WEBHOOK_SECRET=
+# QA_AUTO_REVIEW_MODEL=ops-claude-haiku
+# QA_REVIEW_ESCALATION_MODEL=ops-claude-sonnet
+# QA_REVIEW_SAMPLE_RATE=0.015
+# QA_REVIEW_MIN_DURATION_SEC=90
+# QA_REVIEW_MIN_TRANSCRIPT_CHARS=200
+# QA_REVIEW_NEGATIVE_SENTIMENTS=negative
+# QA_REVIEW_ALWAYS_TAGS=negative
+# QA_REVIEW_SKIP_TAGS=voicemail reached,machine detected,not answered,dial no answer,dial busy,dial failed
+# QA_REVIEW_SLACK_CHANNEL=#ops-manager-alerts
 ```

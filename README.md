@@ -117,6 +117,8 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 
 Requires LiteLLM + `ANTHROPIC_API_KEY`. Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
 
+**Auto QA (slice 2):** point Assistable post-call webhooks at `POST /webhooks/assistable/post-call` and set `QA_AUTO_REVIEW_ENABLED=true`. Haiku reviews 1.5% random eligible calls plus 100% of negative/error/failed-task calls; Sonnet escalates Haiku failures. See Phase 5 doc for env vars.
+
 ## Deploy
 
 **Canonical deployment:** the DigitalOcean droplet at **`147.182.131.74`**, repo checked out at **`/opt/ops-manager`** (tracks `main`). The laptop `docker compose` stack [above](#local-dev-quickstart) is **local dev only** — this droplet is the source of truth for running ops-manager.

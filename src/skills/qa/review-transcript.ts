@@ -2,6 +2,11 @@ import { z } from 'zod';
 import { QA_REVIEW_SYSTEM_PROMPT } from '../../agents/qa-review/system-prompt.js';
 import { resolveAccountInput } from '../../lib/accounts/resolve-account-input.js';
 import { ExternalServiceError, ValidationError } from '../../lib/errors.js';
+import {
+  getQaAutoReviewModel,
+  getQaManualReviewModel,
+  getQaReviewEscalationModel,
+} from '../../lib/qa/review-policy.js';
 import type { LiteLLMClient } from '../../lib/llm/client.js';
 import type { Skill, SkillContext } from '../_types.js';
 
@@ -13,6 +18,9 @@ export const reviewTranscriptInputSchema = z.object({
   accountQuery: z.string().trim().min(1).optional(),
   transcript: z.string().trim().min(20),
   callType: z.enum(['inbound', 'outbound']).optional(),
+  model: z.string().trim().min(1).optional(),
+  callId: z.string().trim().min(1).optional(),
+  reviewTrigger: z.enum(['sample', 'negative', 'error', 'failed_task', 'manual']).optional(),
 });
 
 export type ReviewTranscriptInput = z.infer<typeof reviewTranscriptInputSchema>;
@@ -45,6 +53,9 @@ export interface ReviewTranscriptOutput {
   findings: QaFinding[];
   transcriptChars: number;
   reviewedAt: string;
+  modelUsed: string;
+  reviewTrigger?: ReviewTranscriptInput['reviewTrigger'];
+  callId?: string;
 }
 
 export const qaReviewTranscriptSkill: Skill<ReviewTranscriptInput, ReviewTranscriptOutput> = {
@@ -77,6 +88,7 @@ export const qaReviewTranscriptSkill: Skill<ReviewTranscriptInput, ReviewTranscr
         accountName: account.name,
         transcript,
         callType: input.callType,
+        model: input.model ?? getQaManualReviewModel(),
       },
       ctx.llm,
     );
@@ -91,6 +103,9 @@ export const qaReviewTranscriptSkill: Skill<ReviewTranscriptInput, ReviewTranscr
       findings: review.findings,
       transcriptChars: transcript.length,
       reviewedAt,
+      modelUsed: input.model ?? getQaManualReviewModel(),
+      reviewTrigger: input.reviewTrigger,
+      callId: input.callId,
     };
 
     await ctx.audit.log({
@@ -140,11 +155,22 @@ export function formatQaReviewOutput(output: ReviewTranscriptOutput): string {
     `Account: ${output.accountName}`,
     `Score: ${output.score}/100 (${output.pass ? 'PASS' : 'FAIL'})`,
     `Call type: ${output.callType}`,
+    `Model: ${output.modelUsed}`,
+  ];
+
+  if (output.reviewTrigger) {
+    lines.push(`Trigger: ${output.reviewTrigger}`);
+  }
+  if (output.callId) {
+    lines.push(`Call ID: ${output.callId}`);
+  }
+
+  lines.push(
     `Transcript length: ${output.transcriptChars} chars`,
     `Reviewed at: ${output.reviewedAt}`,
     '',
     `Summary: ${output.summary}`,
-  ];
+  );
 
   if (output.findings.length === 0) {
     lines.push('', 'Findings: none');
@@ -180,6 +206,7 @@ async function reviewTranscript(
     accountName: string;
     transcript: string;
     callType?: 'inbound' | 'outbound';
+    model: string;
   },
   llm: LiteLLMClient,
 ): Promise<QaReviewResult> {
@@ -188,7 +215,7 @@ async function reviewTranscript(
     : 'Infer call type from context.';
 
   const response = await llm.chat({
-    model: process.env.QA_REVIEW_MODEL,
+    model: input.model,
     messages: [
       { role: 'system', content: QA_REVIEW_SYSTEM_PROMPT },
       {
@@ -211,6 +238,58 @@ async function reviewTranscript(
 
   return parseQaReviewModelOutput(content);
 }
+
+export async function runEscalatedQaReview(
+  input: ReviewTranscriptInput & { accountId: string; accountName: string },
+  llm: LiteLLMClient,
+): Promise<ReviewTranscriptOutput> {
+  const transcript = truncateTranscript(input.transcript);
+  const reviewedAt = new Date().toISOString();
+  const primaryModel = input.model ?? getQaAutoReviewModel();
+  const primary = await reviewTranscript(
+    {
+      accountName: input.accountName,
+      transcript,
+      callType: input.callType,
+      model: primaryModel,
+    },
+    llm,
+  );
+
+  let finalReview = primary;
+  let modelUsed = primaryModel;
+  const escalationModel = getQaReviewEscalationModel();
+
+  if (!primary.pass && escalationModel && escalationModel !== primaryModel) {
+    finalReview = await reviewTranscript(
+      {
+        accountName: input.accountName,
+        transcript,
+        callType: input.callType,
+        model: escalationModel,
+      },
+      llm,
+    );
+    modelUsed = escalationModel;
+  }
+
+  return {
+    accountId: input.accountId,
+    accountName: input.accountName,
+    callType: finalReview.callType,
+    score: finalReview.score,
+    pass: finalReview.pass,
+    summary: finalReview.summary,
+    findings: finalReview.findings,
+    transcriptChars: transcript.length,
+    reviewedAt,
+    modelUsed,
+    reviewTrigger: input.reviewTrigger,
+    callId: input.callId,
+  };
+}
+
+export { getQaAutoReviewModel, getQaManualReviewModel, getQaReviewEscalationModel };
 
 export function parseQaReviewModelOutput(content: string): QaReviewResult {
   const jsonText = extractJsonObject(content);

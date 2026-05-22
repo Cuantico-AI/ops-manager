@@ -6,6 +6,7 @@ import { runMigrations } from './lib/db/migrate.js';
 import { logger } from './lib/logger.js';
 import { closeQueue } from './lib/queue/client.js';
 import { registerScheduledJobs, stopScheduledJobs } from './jobs/_registry.js';
+import { registerQaAutoReviewWorker, stopQaAutoReviewWorker } from './jobs/qa-auto-review.js';
 import { n8nCheckWorkflowHealthSkill } from './skills/n8n/check-workflow-health.js';
 import { assistableCheckOAuthStatusSkill } from './skills/assistable/check-oauth-status.js';
 import { ghlCheckPitTokenSkill } from './skills/ghl/check-pit-token.js';
@@ -23,6 +24,7 @@ import { qaReviewTranscriptSkill } from './skills/qa/review-transcript.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
 import { startBoltApp, stopBoltApp } from './slack/bot.js';
+import { registerAssistablePostCallWebhook } from './webhooks/assistable-post-call.js';
 
 const startTime = Date.now();
 const version = process.env.APP_VERSION ?? '0.1.0';
@@ -58,6 +60,8 @@ async function main(): Promise<void> {
     version,
   }));
 
+  registerAssistablePostCallWebhook(fastify);
+
   await fastify.listen({ port, host: '0.0.0.0' });
   logger.info({ port, version }, 'HTTP server listening');
 
@@ -65,6 +69,7 @@ async function main(): Promise<void> {
   logger.info('Slack Bolt app started (Socket Mode)');
 
   await registerScheduledJobs(registry);
+  registerQaAutoReviewWorker(registry);
   logger.info('Job scheduler started');
 
   void auditLogger;
@@ -72,6 +77,7 @@ async function main(): Promise<void> {
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Shutting down');
+  await stopQaAutoReviewWorker();
   await stopScheduledJobs();
   await stopBoltApp();
   if (fastify) {
