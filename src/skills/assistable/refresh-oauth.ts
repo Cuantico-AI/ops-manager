@@ -65,6 +65,50 @@ export const assistableRefreshOAuthSkill: Skill<
 
     const previousStatus = await readPreviousOAuthStatus(account.id);
     const checkedAt = new Date().toISOString();
+    const currentCheck = await assistableClient.checkLocationConnection({
+      locationId: resolved.locationId,
+    });
+
+    if (currentCheck.status === 'connected') {
+      await saveAssistableOAuthCheckResult(
+        buildCheckResult(
+          {
+            accountId: account.id,
+            accountName: account.name,
+            assistableLocationId: resolved.locationId,
+            locationSource: resolved.source,
+          },
+          currentCheck,
+          checkedAt,
+        ),
+      );
+
+      const output: RefreshAssistableOAuthOutput = {
+        mode: 'manual',
+        accountId: account.id,
+        accountName: account.name,
+        assistableLocationId: resolved.locationId,
+        locationSource: resolved.source,
+        previousStatus,
+        currentStatus: 'connected',
+        refreshedAt: checkedAt,
+      };
+
+      await ctx.audit.log({
+        jobId: ctx.jobId,
+        actor: ctx.agentId,
+        action: 'assistable.refresh-oauth',
+        target: account.id,
+        mutated: false,
+        output: {
+          mode: output.mode,
+          currentStatus: output.currentStatus,
+          skippedRefresh: true,
+        },
+      });
+
+      return output;
+    }
 
     await ctx.audit.log({
       jobId: ctx.jobId,
@@ -233,10 +277,10 @@ async function runManualReconnectGuide(
     locationSource: input.locationSource,
     previousStatus: input.previousStatus,
     currentStatus: verification.status,
-    manualSteps:
-      verification.status === 'connected'
-        ? undefined
-        : buildManualAssistableOAuthResetSteps(input.accountName, input.assistableLocationId),
+    manualSteps: buildManualAssistableOAuthResetSteps(
+      input.accountName,
+      input.assistableLocationId,
+    ),
     refreshedAt: input.checkedAt,
   };
 }
