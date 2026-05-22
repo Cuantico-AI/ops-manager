@@ -99,6 +99,7 @@ Phase 4 adds write-capable skills gated by Slack approval in production. With
 `BYPASS_APPROVAL=true` in local dev, mutating commands run immediately.
 
 - `/ops set-custom-value <account> <customValueId> <value>` — update a GHL location custom value
+- `/ops trigger-n8n <account> [workflowId]` — trigger a tracked n8n workflow
 - `/ops approve <approval-id>` — approve a pending mutating action
 - `/ops reject <approval-id>` — reject a pending mutating action
 - `/ops jobs` — list recent jobs and statuses

@@ -28,7 +28,7 @@ Reject via button or `/ops reject <approval-id>`.
 - `ghl.set-custom-value` — update a GHL location custom value via PIT token
 - `/ops set-custom-value <account> <customValueId> <value>`
 
-## Slice 2 (next)
+## Slice 2 (this PR)
 
 - `n8n.trigger-workflow` — execute a tracked client workflow on demand
 - `/ops trigger-n8n <account> [workflowId]`

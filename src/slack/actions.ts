@@ -4,10 +4,7 @@ import {
   assertApprovalId,
   rejectApprovalRequest,
 } from '../lib/approval/resume.js';
-import {
-  formatSetCustomValueOutput,
-  type SetCustomValueOutput,
-} from '../skills/ghl/set-custom-value.js';
+import { formatApprovalResumeResult } from '../lib/slack/format-approval-output.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 
 export function registerActions(app: App, registry: SkillRegistry): void {
@@ -28,13 +25,7 @@ export function registerActions(app: App, registry: SkillRegistry): void {
     try {
       const approvalId = assertApprovalId(action.value);
       const output = await approveAndResumeJob(registry, approvalId, userId);
-      const text =
-        typeof output === 'object' &&
-        output &&
-        'customValueId' in output &&
-        'accountName' in output
-          ? formatSetCustomValueOutput(output as SetCustomValueOutput)
-          : `Approval ${approvalId} approved and job completed.`;
+      const text = formatApprovalResumeResult(output);
 
       await respond?.({
         response_type: 'ephemeral',
