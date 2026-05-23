@@ -120,6 +120,12 @@ import {
 } from '../lib/client-checkin/briefs.js';
 import type { ClientCheckinFleetSummary } from '../lib/client-checkin/fleet-summary.js';
 import {
+  formatClientCheckinFleetSweepOutput,
+  parseClientCheckinFleetSweepCommandArgs,
+  type ClientCheckinFleetSweepSummary,
+} from '../lib/client-checkin/fleet-sweep.js';
+import { runClientCheckinFleetSweep } from '../jobs/client-checkin-fleet-sweep.js';
+import {
   persistPromptOpsReview,
   type ListPromptOpsReviewsOutput,
   type PromptOpsReviewRecord,
@@ -668,6 +674,28 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
     }
 
     if (
+      subcommand === 'checkin-fleet-run' ||
+      subcommand === 'client-checkin-fleet-run' ||
+      subcommand === 'checkin-sweep'
+    ) {
+      try {
+        const output = await runManualClientCheckinFleetSweep(args, registry);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatClientCheckinFleetSweepOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Client check-in fleet sweep failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+      }
+      return;
+    }
+
+    if (
       subcommand === 'checkin-history' ||
       subcommand === 'check-in-history' ||
       subcommand === 'client-checkin-history' ||
@@ -862,7 +890,7 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-run, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -2009,6 +2037,21 @@ async function runManualClientCheckinFleetSummary(
     ]);
     throw err;
   }
+}
+
+async function runManualClientCheckinFleetSweep(
+  args: string,
+  registry: SkillRegistry,
+): Promise<ClientCheckinFleetSweepSummary> {
+  const parsedArgs = parseClientCheckinFleetSweepCommandArgs(args);
+  return runClientCheckinFleetSweep(registry, {
+    triggerType: 'manual',
+    triggerPayload: {
+      command: '/ops checkin-fleet-run',
+      ...parsedArgs,
+    },
+    input: parsedArgs,
+  });
 }
 
 async function runManualClientCheckinHistory(args: string): Promise<ListClientCheckinBriefsOutput> {

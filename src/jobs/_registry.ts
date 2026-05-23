@@ -10,6 +10,12 @@ import {
   runClientCheckinFleetSummary,
 } from './client-checkin-fleet-summary.js';
 import {
+  CLIENT_CHECKIN_FLEET_SWEEP_QUEUE,
+  getClientCheckinFleetSweepCron,
+  isClientCheckinFleetSweepEnabled,
+  runClientCheckinFleetSweep,
+} from './client-checkin-fleet-sweep.js';
+import {
   getFleetDailyHealthCron,
   FLEET_DAILY_HEALTH_QUEUE,
   runFleetDailyHealth,
@@ -67,6 +73,7 @@ let assistableOAuthHealthWorker: Worker | null = null;
 let n8nWorkflowHealthWorker: Worker | null = null;
 let fleetDailyHealthWorker: Worker | null = null;
 let qaFleetSummaryWorker: Worker | null = null;
+let clientCheckinFleetSweepWorker: Worker | null = null;
 let clientCheckinFleetSummaryWorker: Worker | null = null;
 let promptOpsFleetSummaryWorker: Worker | null = null;
 let opsFleetDigestWorker: Worker | null = null;
@@ -202,6 +209,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
 
     qaFleetSummaryWorker = getWorker(QA_FLEET_SUMMARY_QUEUE, async () => {
       await runQaFleetSummary(registry);
+    });
+  }
+
+  if (isClientCheckinFleetSweepEnabled()) {
+    const clientCheckinFleetSweepQueue = getQueue(CLIENT_CHECKIN_FLEET_SWEEP_QUEUE);
+    const clientCheckinFleetSweepCron = getClientCheckinFleetSweepCron();
+
+    await clientCheckinFleetSweepQueue.obliterate({ force: true });
+    await clientCheckinFleetSweepQueue.add(
+      'client-checkin-fleet-sweep-tick',
+      {},
+      {
+        repeat: { pattern: clientCheckinFleetSweepCron },
+        jobId: 'client-checkin-fleet-sweep-repeatable',
+      },
+    );
+
+    logger.info(
+      {
+        cron: clientCheckinFleetSweepCron,
+        queue: CLIENT_CHECKIN_FLEET_SWEEP_QUEUE,
+      },
+      'Registered client check-in fleet sweep cron job',
+    );
+
+    clientCheckinFleetSweepWorker = getWorker(CLIENT_CHECKIN_FLEET_SWEEP_QUEUE, async () => {
+      await runClientCheckinFleetSweep(registry);
     });
   }
 
@@ -363,6 +397,10 @@ export async function stopScheduledJobs(): Promise<void> {
   if (qaFleetSummaryWorker) {
     await qaFleetSummaryWorker.close();
     qaFleetSummaryWorker = null;
+  }
+  if (clientCheckinFleetSweepWorker) {
+    await clientCheckinFleetSweepWorker.close();
+    clientCheckinFleetSweepWorker = null;
   }
   if (clientCheckinFleetSummaryWorker) {
     await clientCheckinFleetSummaryWorker.close();
