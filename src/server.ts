@@ -25,6 +25,7 @@ import { clientCheckinGenerateBriefSkill } from './skills/client-checkin/generat
 import { clientCheckinListFleetRisksSkill } from './skills/client-checkin/list-fleet-risks.js';
 import { clientCheckinListBriefsSkill } from './skills/client-checkin/list-briefs.js';
 import { promptOpsGetReviewSkill } from './skills/prompt-ops/get-review.js';
+import { promptOpsListFleetRisksSkill } from './skills/prompt-ops/list-fleet-risks.js';
 import { promptOpsListReviewsSkill } from './skills/prompt-ops/list-reviews.js';
 import { promptOpsReviewRequestSkill } from './skills/prompt-ops/review-request.js';
 import { qaGetReviewSkill } from './skills/qa/get-review.js';
@@ -66,6 +67,7 @@ registry.register(clientCheckinListFleetRisksSkill);
 registry.register(promptOpsReviewRequestSkill);
 registry.register(promptOpsListReviewsSkill);
 registry.register(promptOpsGetReviewSkill);
+registry.register(promptOpsListFleetRisksSkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;
 

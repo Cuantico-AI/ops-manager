@@ -26,6 +26,12 @@ import {
   runQaFleetSummary,
 } from './qa-fleet-summary.js';
 import {
+  getPromptOpsFleetSummaryCron,
+  isPromptOpsFleetSummaryEnabled,
+  PROMPT_OPS_FLEET_SUMMARY_QUEUE,
+  runPromptOpsFleetSummary,
+} from './prompt-ops-fleet-summary.js';
+import {
   getAssistableOAuthHealthCron,
   ASSISTABLE_OAUTH_HEALTH_QUEUE,
   runAssistableOAuthHealth,
@@ -56,6 +62,7 @@ let n8nWorkflowHealthWorker: Worker | null = null;
 let fleetDailyHealthWorker: Worker | null = null;
 let qaFleetSummaryWorker: Worker | null = null;
 let clientCheckinFleetSummaryWorker: Worker | null = null;
+let promptOpsFleetSummaryWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -218,6 +225,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
     });
   }
 
+  if (isPromptOpsFleetSummaryEnabled()) {
+    const promptOpsFleetSummaryQueue = getQueue(PROMPT_OPS_FLEET_SUMMARY_QUEUE);
+    const promptOpsFleetSummaryCron = getPromptOpsFleetSummaryCron();
+
+    await promptOpsFleetSummaryQueue.obliterate({ force: true });
+    await promptOpsFleetSummaryQueue.add(
+      'prompt-ops-fleet-summary-tick',
+      {},
+      {
+        repeat: { pattern: promptOpsFleetSummaryCron },
+        jobId: 'prompt-ops-fleet-summary-repeatable',
+      },
+    );
+
+    logger.info(
+      {
+        cron: promptOpsFleetSummaryCron,
+        queue: PROMPT_OPS_FLEET_SUMMARY_QUEUE,
+      },
+      'Registered Prompt Ops fleet summary cron job',
+    );
+
+    promptOpsFleetSummaryWorker = getWorker(PROMPT_OPS_FLEET_SUMMARY_QUEUE, async () => {
+      await runPromptOpsFleetSummary(registry);
+    });
+  }
+
   const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
   const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
 
@@ -299,5 +333,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (clientCheckinFleetSummaryWorker) {
     await clientCheckinFleetSummaryWorker.close();
     clientCheckinFleetSummaryWorker = null;
+  }
+  if (promptOpsFleetSummaryWorker) {
+    await promptOpsFleetSummaryWorker.close();
+    promptOpsFleetSummaryWorker = null;
   }
 }
