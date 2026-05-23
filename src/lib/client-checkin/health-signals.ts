@@ -1,34 +1,37 @@
+import { z } from 'zod';
 import { query } from '../db/client.js';
 import { resolveAccountInput, type AccountLookupInput } from '../accounts/resolve-account-input.js';
 
-export interface ClientCheckinSignals {
-  accountId: string;
-  accountName: string;
-  accountStatus: string;
-  ghl: {
-    locationId: string | null;
-    pitTokenPresent: boolean;
-    status: string;
-    checkedAt: string | null;
-    httpStatus: number | null;
-    message: string | null;
-  };
-  assistable: {
-    subaccountId: string | null;
-    status: string;
-    checkedAt: string | null;
-    httpStatus: number | null;
-    message: string | null;
-  };
-  n8n: {
-    workflowIds: string[];
-    workflowCount: number;
-    status: string;
-    checkedAt: string | null;
-    failingWorkflows: number | null;
-    staleWorkflows: number | null;
-  };
-}
+export const clientCheckinSignalsSchema = z.object({
+  accountId: z.string().min(1),
+  accountName: z.string().min(1),
+  accountStatus: z.string().min(1),
+  ghl: z.object({
+    locationId: z.string().nullable(),
+    pitTokenPresent: z.boolean(),
+    status: z.string().min(1),
+    checkedAt: z.string().nullable(),
+    httpStatus: z.number().nullable(),
+    message: z.string().nullable(),
+  }),
+  assistable: z.object({
+    subaccountId: z.string().nullable(),
+    status: z.string().min(1),
+    checkedAt: z.string().nullable(),
+    httpStatus: z.number().nullable(),
+    message: z.string().nullable(),
+  }),
+  n8n: z.object({
+    workflowIds: z.array(z.string()),
+    workflowCount: z.number().int().nonnegative(),
+    status: z.string().min(1),
+    checkedAt: z.string().nullable(),
+    failingWorkflows: z.number().int().nonnegative().nullable(),
+    staleWorkflows: z.number().int().nonnegative().nullable(),
+  }),
+});
+
+export type ClientCheckinSignals = z.infer<typeof clientCheckinSignalsSchema>;
 
 export interface AccountHealthRow {
   id: string;

@@ -20,7 +20,9 @@ import { ghlSnapshotSkill } from './skills/ghl/snapshot.js';
 import { n8nTriggerWorkflowSkill } from './skills/n8n/trigger-workflow.js';
 import { assistableRefreshOAuthSkill } from './skills/assistable/refresh-oauth.js';
 import { ghlSetCustomValueSkill } from './skills/ghl/set-custom-value.js';
+import { clientCheckinGetBriefSkill } from './skills/client-checkin/get-brief.js';
 import { clientCheckinGenerateBriefSkill } from './skills/client-checkin/generate-brief.js';
+import { clientCheckinListBriefsSkill } from './skills/client-checkin/list-briefs.js';
 import { promptOpsReviewRequestSkill } from './skills/prompt-ops/review-request.js';
 import { qaGetReviewSkill } from './skills/qa/get-review.js';
 import { qaListReviewsSkill } from './skills/qa/list-reviews.js';
@@ -53,6 +55,8 @@ registry.register(qaReviewTranscriptSkill);
 registry.register(qaListReviewsSkill);
 registry.register(qaGetReviewSkill);
 registry.register(clientCheckinGenerateBriefSkill);
+registry.register(clientCheckinListBriefsSkill);
+registry.register(clientCheckinGetBriefSkill);
 registry.register(promptOpsReviewRequestSkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;

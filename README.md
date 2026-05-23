@@ -118,6 +118,8 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - `/ops qa-show <call_id>` — persisted QA review for an Assistable call ID
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
+- `/ops checkin-history <account> [limit]` — recent persisted client check-in briefs for an account
+- `/ops checkin-show <brief_id>` — retrieve a persisted client check-in brief
 - Client check-ins run as `agent_id = client-checkin` and do not mutate external systems
 - `/ops prompt-ops <account> :: <prompt change request>` — read-only prompt change risk/review brief
 - Prompt Ops runs as `agent_id = prompt-ops`; it does not update live assistant prompts or external systems
