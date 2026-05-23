@@ -61,6 +61,63 @@ describe('formatFleetDailyHealthOverview', () => {
     expect(text).toContain('39 account issue(s) across the fleet.');
     expect(text).not.toContain('xoxb-');
   });
+
+  it('excludes accounts missing workflow IDs from the issue count', () => {
+    const text = formatFleetDailyHealthOverview({
+      ghl: {
+        checkedAt: '2026-05-22T14:00:00.000Z',
+        summary: {
+          total: 37,
+          valid: 37,
+          invalid: 0,
+          forbidden: 0,
+          notFound: 0,
+          missingToken: 0,
+          missingLocation: 0,
+          secretError: 0,
+          unreachable: 0,
+          needsAttention: 0,
+        },
+        results: [],
+      },
+      assistable: {
+        checkedAt: '2026-05-22T14:00:00.000Z',
+        summary: {
+          total: 37,
+          connected: 37,
+          disconnected: 0,
+          notFound: 0,
+          missingSubaccountId: 0,
+          authError: 0,
+          unreachable: 0,
+          needsAttention: 0,
+        },
+        results: [],
+      },
+      n8n: {
+        checkedAt: '2026-05-22T14:00:00.000Z',
+        summary: {
+          total: 37,
+          healthy: 0,
+          needsAttention: 2,
+          missingWorkflowIds: 35,
+          inactiveWorkflows: 0,
+          failingWorkflows: 1,
+          staleWorkflows: 1,
+          notFoundWorkflows: 0,
+          unreachableWorkflows: 0,
+        },
+        results: [],
+      },
+    });
+
+    // 35 accounts with no configured workflow IDs are not enrolled in n8n
+    // monitoring, so they must not inflate the fleet issue count: only the
+    // 2 genuine needs-attention accounts count.
+    expect(text).toContain('2 account issue(s) across the fleet.');
+    // ...but the missing-ID figure stays visible for informational purposes.
+    expect(text).toContain('Missing workflow IDs: 35');
+  });
 });
 
 describe('isFleetDailyHealthEnabled', () => {

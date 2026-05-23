@@ -12,7 +12,7 @@ export function formatFleetDailyHealthOverview(checks: FleetDailyHealthChecks): 
   const { ghl, assistable, n8n } = checks;
   const ghlIssues = ghl.summary.needsAttention;
   const assistableIssues = assistable.summary.needsAttention;
-  const n8nIssues = n8n.summary.needsAttention + n8n.summary.missingWorkflowIds;
+  const n8nIssues = n8n.summary.needsAttention;
   const totalIssues = ghlIssues + assistableIssues + n8nIssues;
 
   const lines = [
