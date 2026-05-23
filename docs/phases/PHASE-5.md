@@ -126,6 +126,19 @@ The persistence layer stores the generated status, summary, talking points, open
 issues, follow-up questions, model, generated timestamp, and non-secret health
 signals. It does not store GHL PIT tokens or Assistable credentials.
 
+## Slice 6 (this PR) — Prompt Ops persistence and retrieval
+
+- Add `prompt_ops_reviews` table for generated Prompt Ops review history
+- Persist manual `/ops prompt-ops` review output and context character counts
+- Add `/ops prompt-history <account> [limit]` for recent Prompt Ops reviews
+- Add `/ops prompt-history <account> --blocked` for blocked-only review history
+- Add `/ops prompt-show <review_id>` for a persisted Prompt Ops review
+
+The persistence layer stores the risk level, blocked flag, summary, intended
+outcome, recommendations, test/rollback plans, clarifying questions, blockers,
+model, reviewed timestamp, and context character counts. It does not store the
+raw prompt-change request, current prompt, or conversation sample text.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:

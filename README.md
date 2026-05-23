@@ -122,6 +122,9 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - `/ops checkin-show <brief_id>` — retrieve a persisted client check-in brief
 - Client check-ins run as `agent_id = client-checkin` and do not mutate external systems
 - `/ops prompt-ops <account> :: <prompt change request>` — read-only prompt change risk/review brief
+- `/ops prompt-history <account> [limit]` — recent persisted Prompt Ops reviews for an account
+- `/ops prompt-history <account> --blocked` — recent blocked Prompt Ops reviews for an account
+- `/ops prompt-show <review_id>` — retrieve a persisted Prompt Ops review
 - Prompt Ops runs as `agent_id = prompt-ops`; it does not update live assistant prompts or external systems
 
 Requires LiteLLM + `ANTHROPIC_API_KEY`. Optional model overrides include

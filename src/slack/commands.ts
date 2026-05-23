@@ -52,6 +52,18 @@ import {
   parseClientCheckinHistoryCommandArgs,
 } from '../skills/client-checkin/list-briefs.js';
 import {
+  formatPromptOpsReviewRecordOutput,
+  getPromptOpsReviewInputSchema,
+  parsePromptOpsShowCommandArgs,
+  promptOpsGetReviewSkill,
+} from '../skills/prompt-ops/get-review.js';
+import {
+  formatPromptOpsReviewHistoryOutput,
+  listPromptOpsReviewsInputSchema,
+  parsePromptOpsHistoryCommandArgs,
+  promptOpsListReviewsSkill,
+} from '../skills/prompt-ops/list-reviews.js';
+import {
   formatPromptOpsReviewOutput,
   parsePromptOpsCommandArgs,
   promptOpsReviewRequestSkill,
@@ -82,6 +94,11 @@ import {
   type ClientCheckinBriefRecord,
   type ListClientCheckinBriefsOutput,
 } from '../lib/client-checkin/briefs.js';
+import {
+  persistPromptOpsReview,
+  type ListPromptOpsReviewsOutput,
+  type PromptOpsReviewRecord,
+} from '../lib/prompt-ops/reviews.js';
 import {
   persistQaReview,
   type ListQaReviewsOutput,
@@ -675,9 +692,65 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (
+      subcommand === 'prompt-history' ||
+      subcommand === 'prompt-ops-history' ||
+      subcommand === 'prompt-reviews'
+    ) {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops prompt-history <account name> [limit]',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualPromptOpsHistory(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatPromptOpsReviewHistoryOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Prompt Ops history failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (
+      subcommand === 'prompt-show' ||
+      subcommand === 'prompt-ops-show' ||
+      subcommand === 'prompt-review-show'
+    ) {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops prompt-show <review_id>',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualPromptOpsShow(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatPromptOpsReviewRecordOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Prompt Ops show failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1793,21 +1866,146 @@ async function runManualPromptOpsReview(args: string): Promise<ReviewPromptOpsRe
 
   try {
     const output = await promptOpsReviewRequestSkill.execute(parsedInput, ctx);
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
+    const persistedReview = await persistPromptOpsReview({ jobId, output });
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, account_id = $3, completed_at = NOW()
+       WHERE id = $4`,
+      [
+        'succeeded',
+        JSON.stringify({
+          promptOpsReviewId: persistedReview.id,
+          riskLevel: output.riskLevel,
+          blocked: output.blocked,
+          summary: output.summary,
+          intendedOutcome: output.intendedOutcome,
+          recommendedChanges: output.recommendedChanges,
+          testPlan: output.testPlan,
+          rollbackPlan: output.rollbackPlan,
+          clarifyingQuestions: output.clarifyingQuestions,
+          blockers: output.blockers,
+        }),
+        output.accountId,
+        jobId,
+      ],
+    );
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
       JSON.stringify({
-        riskLevel: output.riskLevel,
-        blocked: output.blocked,
-        summary: output.summary,
-        intendedOutcome: output.intendedOutcome,
-        recommendedChanges: output.recommendedChanges,
-        testPlan: output.testPlan,
-        rollbackPlan: output.rollbackPlan,
-        clarifyingQuestions: output.clarifyingQuestions,
-        blockers: output.blockers,
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
       }),
       jobId,
     ]);
+    throw err;
+  }
+}
+
+async function runManualPromptOpsHistory(args: string): Promise<ListPromptOpsReviewsOutput> {
+  const parsedArgs = parsePromptOpsHistoryCommandArgs(args);
+  const parsedInput = listPromptOpsReviewsInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'prompt-ops',
+      'manual',
+      JSON.stringify({ command: '/ops prompt-history', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'prompt-ops',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await promptOpsListReviewsSkill.execute(parsedInput, ctx);
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, account_id = $3, completed_at = NOW()
+       WHERE id = $4`,
+      [
+        'succeeded',
+        JSON.stringify({
+          accountId: output.accountId,
+          accountName: output.accountName,
+          reviewCount: output.reviews.length,
+          blockedOnly: output.blockedOnly,
+        }),
+        output.accountId,
+        jobId,
+      ],
+    );
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualPromptOpsShow(args: string): Promise<PromptOpsReviewRecord> {
+  const parsedArgs = parsePromptOpsShowCommandArgs(args);
+  const parsedInput = getPromptOpsReviewInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'prompt-ops',
+      'manual',
+      JSON.stringify({ command: '/ops prompt-show', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'prompt-ops',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await promptOpsGetReviewSkill.execute(parsedInput, ctx);
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, account_id = $3, completed_at = NOW()
+       WHERE id = $4`,
+      [
+        'succeeded',
+        JSON.stringify({
+          promptOpsReviewId: output.id,
+          accountId: output.accountId,
+          accountName: output.accountName,
+          riskLevel: output.riskLevel,
+          blocked: output.blocked,
+        }),
+        output.accountId,
+        jobId,
+      ],
+    );
     return output;
   } catch (err) {
     await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
