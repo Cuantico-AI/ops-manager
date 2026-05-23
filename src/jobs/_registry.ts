@@ -14,6 +14,12 @@ import {
   runN8nWorkflowHealth,
 } from './n8n-workflow-health.js';
 import {
+  getQaFleetSummaryCron,
+  isQaFleetSummaryEnabled,
+  QA_FLEET_SUMMARY_QUEUE,
+  runQaFleetSummary,
+} from './qa-fleet-summary.js';
+import {
   getAssistableOAuthHealthCron,
   ASSISTABLE_OAUTH_HEALTH_QUEUE,
   runAssistableOAuthHealth,
@@ -42,6 +48,7 @@ let ghlConfigInventoryWorker: Worker | null = null;
 let assistableOAuthHealthWorker: Worker | null = null;
 let n8nWorkflowHealthWorker: Worker | null = null;
 let fleetDailyHealthWorker: Worker | null = null;
+let qaFleetSummaryWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -153,6 +160,30 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
     });
   }
 
+  if (isQaFleetSummaryEnabled()) {
+    const qaFleetSummaryQueue = getQueue(QA_FLEET_SUMMARY_QUEUE);
+    const qaFleetSummaryCron = getQaFleetSummaryCron();
+
+    await qaFleetSummaryQueue.obliterate({ force: true });
+    await qaFleetSummaryQueue.add(
+      'qa-fleet-summary-tick',
+      {},
+      {
+        repeat: { pattern: qaFleetSummaryCron },
+        jobId: 'qa-fleet-summary-repeatable',
+      },
+    );
+
+    logger.info(
+      { cron: qaFleetSummaryCron, queue: QA_FLEET_SUMMARY_QUEUE },
+      'Registered QA fleet summary cron job',
+    );
+
+    qaFleetSummaryWorker = getWorker(QA_FLEET_SUMMARY_QUEUE, async () => {
+      await runQaFleetSummary(registry);
+    });
+  }
+
   const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
   const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
 
@@ -226,5 +257,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (fleetDailyHealthWorker) {
     await fleetDailyHealthWorker.close();
     fleetDailyHealthWorker = null;
+  }
+  if (qaFleetSummaryWorker) {
+    await qaFleetSummaryWorker.close();
+    qaFleetSummaryWorker = null;
   }
 }
