@@ -163,6 +163,19 @@ Assistable credentials, n8n secrets, or raw account health signal payloads in Sl
 The scheduled job suppresses Slack posts when no watch/at-risk briefs exist in the
 configured window.
 
+## Slice 9 (this PR) — Prompt Ops fleet summary
+
+- Add read-only `prompt-ops.list-fleet-risks` skill for fleet-wide persisted Prompt Ops rollups
+- Add `/ops prompt-fleet-summary [hours]` for recent low/medium/high-risk and blocked review counts
+- Add `/ops prompt-fleet [hours]` and `/ops prompt-ops-fleet [hours]` aliases
+- Add optional scheduled Prompt Ops fleet attention posts when `PROMPT_OPS_FLEET_SUMMARY_ENABLED=true`
+
+The rollup reads only persisted `prompt_ops_reviews` metadata, generated summaries,
+risk levels, blocked flags, counts, and account names. It does not expose raw
+prompt-change requests, current prompt text, conversation samples, Assistable/GHL/n8n
+credentials, or secrets in Slack. The scheduled job suppresses Slack posts when no
+blocked or high-risk reviews exist in the configured window.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -200,4 +213,8 @@ ANTHROPIC_API_KEY=
 # CLIENT_CHECKIN_FLEET_SUMMARY_CRON=30 15 * * *
 # CLIENT_CHECKIN_FLEET_SUMMARY_HOURS=168
 # CLIENT_CHECKIN_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
+# PROMPT_OPS_FLEET_SUMMARY_ENABLED=false
+# PROMPT_OPS_FLEET_SUMMARY_CRON=0 16 * * *
+# PROMPT_OPS_FLEET_SUMMARY_HOURS=168
+# PROMPT_OPS_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
 ```
