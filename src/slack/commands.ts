@@ -83,6 +83,10 @@ import {
   type ReviewPromptOpsRequestOutput,
 } from '../skills/prompt-ops/review-request.js';
 import {
+  formatOpsAccountAttentionRunOutput,
+  parseOpsAccountAttentionRunCommandArgs,
+} from '../skills/ops/account-attention-run.js';
+import {
   formatOpsFleetDigestOutput,
   opsFleetDigestInputSchema,
   opsFleetDigestSkill,
@@ -139,6 +143,8 @@ import {
 import type { PromptOpsFleetSummary } from '../lib/prompt-ops/fleet-summary.js';
 import type { OpsFleetDigestSummary } from '../lib/ops/fleet-digest.js';
 import type { OpsAccountDigestSummary } from '../lib/ops/account-digest.js';
+import { runOpsAccountAttentionRun } from '../jobs/ops-account-attention-run.js';
+import type { OpsAccountAttentionRunSummary } from '../lib/ops/account-attention-run.js';
 import { type FleetQaSummary } from '../lib/qa/fleet-summary.js';
 import {
   persistQaReview,
@@ -310,6 +316,26 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
         await respond({
           response_type: 'ephemeral',
           text: `Ops fleet digest failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (
+      subcommand === 'account-attention-run' ||
+      subcommand === 'account-digest-run' ||
+      subcommand === 'attention-accounts-run'
+    ) {
+      try {
+        const output = await runManualOpsAccountAttentionRun(args, registry);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatOpsAccountAttentionRunOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Ops account attention run failed: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
       return;
@@ -925,7 +951,7 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops account-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-run, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops account-attention-run, /ops account-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-run, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1276,6 +1302,21 @@ async function runManualOpsFleetDigest(args: string): Promise<OpsFleetDigestSumm
     ]);
     throw err;
   }
+}
+
+async function runManualOpsAccountAttentionRun(
+  args: string,
+  registry: SkillRegistry,
+): Promise<OpsAccountAttentionRunSummary> {
+  const parsedArgs = parseOpsAccountAttentionRunCommandArgs(args);
+  return runOpsAccountAttentionRun(registry, {
+    triggerType: 'manual',
+    triggerPayload: {
+      command: '/ops account-attention-run',
+      ...parsedArgs,
+    },
+    input: parsedArgs,
+  });
 }
 
 async function runManualOpsAccountDigest(args: string): Promise<OpsAccountDigestSummary> {
