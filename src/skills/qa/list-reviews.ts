@@ -103,7 +103,7 @@ export function formatQaReviewHistoryOutput(output: ListQaReviewsOutput): string
 function formatQaHistoryLine(review: QaReviewRecord): string {
   const call = review.callId ? `call ${review.callId}` : 'manual review';
   return [
-    `• ${review.reviewedAt} — ${review.score}/100 ${review.pass ? 'PASS' : 'FAIL'} (${call})`,
+    `- ${review.reviewedAt} - ${review.score}/100 ${review.pass ? 'PASS' : 'FAIL'} (${call})`,
     `  Trigger: ${review.reviewTrigger}; findings: ${review.findings.length}; model: ${review.modelUsed}`,
     `  Summary: ${truncate(review.summary, 180)}`,
   ].join('\n');
