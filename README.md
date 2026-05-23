@@ -120,6 +120,7 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - `/ops qa-show <call_id>` — persisted QA review for an Assistable call ID
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
 - `/ops fleet-digest [hours]` — cross-role digest combining QA, client check-in, and Prompt Ops attention signals
+- `/ops account-digest <account> [hours] [--limit=N]` — cross-role Phase 5 digest for one account
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
 - `/ops checkin-fleet-run [hours]` — manually generate missing/stale client check-in briefs across the fleet
 - `/ops checkin-fleet-summary [hours]` — fleet-wide rollup of recent watch/at-risk client check-in briefs
