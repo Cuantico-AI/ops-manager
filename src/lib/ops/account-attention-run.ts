@@ -21,7 +21,7 @@ const DEFAULT_OPS_ACCOUNT_ATTENTION_RUN_CONCURRENCY = 3;
 const MAX_OPS_ACCOUNT_ATTENTION_RUN_CONCURRENCY = 10;
 const MAX_OPS_ACCOUNT_ATTENTION_RUN_FORMAT_ROWS = 10;
 
-export interface OpsAccountAttentionRunCandidate extends OpsFleetDigestAccountSignal {}
+export type OpsAccountAttentionRunCandidate = OpsFleetDigestAccountSignal;
 
 export type OpsAccountAttentionRunResult =
   | {
