@@ -223,6 +223,22 @@ client. It reads only persisted metadata and generated summaries; it does not ex
 raw transcripts, finding quotes, prompt-change request text, current prompt text,
 conversation samples, account health signal payloads, credentials, or secrets.
 
+## Slice 13 (this PR) — Account attention run
+
+- Add read-only `ops.account-attention-run` skill for batch account digest summaries
+- Add `/ops account-attention-run [hours] [--limit=N] [--min-signals=N] [--digest-limit=N]`
+  with aliases:
+  - `/ops account-digest-run [hours] ...`
+  - `/ops attention-accounts-run [hours] ...`
+- Add optional scheduled Slack posts when `OPS_ACCOUNT_ATTENTION_RUN_ENABLED=true`
+
+The run uses the existing Ops fleet digest to select accounts with attention in at
+least `--min-signals` Phase 5 areas, then fetches bounded per-account digests for
+those accounts. It does not call external APIs, mutate customer systems, create new
+records, expose raw transcripts, finding quotes, prompt-change request text, current
+prompt text, conversation samples, account health signal payloads, credentials, or
+secrets. The scheduled job suppresses Slack posts when no accounts meet the filter.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -275,4 +291,12 @@ ANTHROPIC_API_KEY=
 # OPS_FLEET_DIGEST_CRON=30 16 * * *
 # OPS_FLEET_DIGEST_HOURS=24
 # OPS_FLEET_DIGEST_CHANNEL=#ops-manager-alerts
+# OPS_ACCOUNT_ATTENTION_RUN_ENABLED=false
+# OPS_ACCOUNT_ATTENTION_RUN_CRON=45 16 * * *
+# OPS_ACCOUNT_ATTENTION_RUN_HOURS=24
+# OPS_ACCOUNT_ATTENTION_RUN_LIMIT=5
+# OPS_ACCOUNT_ATTENTION_RUN_MIN_SIGNALS=2
+# OPS_ACCOUNT_ATTENTION_RUN_DIGEST_LIMIT=5
+# OPS_ACCOUNT_ATTENTION_RUN_CONCURRENCY=3
+# OPS_ACCOUNT_ATTENTION_RUN_CHANNEL=#ops-manager-alerts
 ```

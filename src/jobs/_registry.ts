@@ -44,6 +44,12 @@ import {
   runOpsFleetDigest,
 } from './ops-fleet-digest.js';
 import {
+  getOpsAccountAttentionRunCron,
+  isOpsAccountAttentionRunEnabled,
+  OPS_ACCOUNT_ATTENTION_RUN_QUEUE,
+  runOpsAccountAttentionRun,
+} from './ops-account-attention-run.js';
+import {
   getAssistableOAuthHealthCron,
   ASSISTABLE_OAUTH_HEALTH_QUEUE,
   runAssistableOAuthHealth,
@@ -77,6 +83,7 @@ let clientCheckinFleetSweepWorker: Worker | null = null;
 let clientCheckinFleetSummaryWorker: Worker | null = null;
 let promptOpsFleetSummaryWorker: Worker | null = null;
 let opsFleetDigestWorker: Worker | null = null;
+let opsAccountAttentionRunWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -320,6 +327,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
     });
   }
 
+  if (isOpsAccountAttentionRunEnabled()) {
+    const opsAccountAttentionRunQueue = getQueue(OPS_ACCOUNT_ATTENTION_RUN_QUEUE);
+    const opsAccountAttentionRunCron = getOpsAccountAttentionRunCron();
+
+    await opsAccountAttentionRunQueue.obliterate({ force: true });
+    await opsAccountAttentionRunQueue.add(
+      'ops-account-attention-run-tick',
+      {},
+      {
+        repeat: { pattern: opsAccountAttentionRunCron },
+        jobId: 'ops-account-attention-run-repeatable',
+      },
+    );
+
+    logger.info(
+      {
+        cron: opsAccountAttentionRunCron,
+        queue: OPS_ACCOUNT_ATTENTION_RUN_QUEUE,
+      },
+      'Registered Ops account attention run cron job',
+    );
+
+    opsAccountAttentionRunWorker = getWorker(OPS_ACCOUNT_ATTENTION_RUN_QUEUE, async () => {
+      await runOpsAccountAttentionRun(registry);
+    });
+  }
+
   const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
   const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
 
@@ -413,5 +447,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (opsFleetDigestWorker) {
     await opsFleetDigestWorker.close();
     opsFleetDigestWorker = null;
+  }
+  if (opsAccountAttentionRunWorker) {
+    await opsAccountAttentionRunWorker.close();
+    opsAccountAttentionRunWorker = null;
   }
 }

@@ -28,6 +28,7 @@ import { promptOpsGetReviewSkill } from './skills/prompt-ops/get-review.js';
 import { promptOpsListFleetRisksSkill } from './skills/prompt-ops/list-fleet-risks.js';
 import { promptOpsListReviewsSkill } from './skills/prompt-ops/list-reviews.js';
 import { promptOpsReviewRequestSkill } from './skills/prompt-ops/review-request.js';
+import { opsAccountAttentionRunSkill } from './skills/ops/account-attention-run.js';
 import { opsAccountDigestSkill } from './skills/ops/account-digest.js';
 import { opsFleetDigestSkill } from './skills/ops/fleet-digest.js';
 import { qaGetReviewSkill } from './skills/qa/get-review.js';
@@ -70,6 +71,7 @@ registry.register(promptOpsReviewRequestSkill);
 registry.register(promptOpsListReviewsSkill);
 registry.register(promptOpsGetReviewSkill);
 registry.register(promptOpsListFleetRisksSkill);
+registry.register(opsAccountAttentionRunSkill);
 registry.register(opsAccountDigestSkill);
 registry.register(opsFleetDigestSkill);
 
