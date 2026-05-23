@@ -16,7 +16,10 @@ import {
 import { listRecentJobs } from '../lib/approval/store.js';
 import { query } from '../lib/db/client.js';
 import { ExternalServiceError } from '../lib/errors.js';
-import { formatFleetDailyHealthOverview, type FleetDailyHealthChecks } from '../lib/health/fleet-daily-summary.js';
+import {
+  formatFleetDailyHealthOverview,
+  type FleetDailyHealthChecks,
+} from '../lib/health/fleet-daily-summary.js';
 import { llmClient } from '../lib/llm/client.js';
 import {
   checkN8nWorkflowHealthInputSchema,
@@ -29,6 +32,13 @@ import {
   refreshAssistableOAuthInputSchema,
   type RefreshAssistableOAuthOutput,
 } from '../skills/assistable/refresh-oauth.js';
+import {
+  clientCheckinGenerateBriefSkill,
+  formatClientCheckinBriefOutput,
+  generateClientCheckinBriefInputSchema,
+  parseClientCheckinCommandArgs,
+  type GenerateClientCheckinBriefOutput,
+} from '../skills/client-checkin/generate-brief.js';
 import {
   formatQaReviewOutput,
   qaReviewTranscriptSkill,
@@ -437,9 +447,37 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (
+      subcommand === 'client-checkin' ||
+      subcommand === 'client-check-in' ||
+      subcommand === 'check-in'
+    ) {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops client-checkin <account name>',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualClientCheckin(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatClientCheckinBriefOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Client check-in failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops client-checkin, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1156,7 +1194,11 @@ async function runManualQaReview(args: string): Promise<ReviewTranscriptOutput> 
       jobId,
       'qa-review',
       'manual',
-      JSON.stringify({ command: '/ops qa-review', ...parsedInput, transcriptChars: parsedInput.transcript.length }),
+      JSON.stringify({
+        command: '/ops qa-review',
+        ...parsedInput,
+        transcriptChars: parsedInput.transcript.length,
+      }),
       'running',
       JSON.stringify({
         accountQuery: parsedInput.accountQuery,
@@ -1184,6 +1226,60 @@ async function runManualQaReview(args: string): Promise<ReviewTranscriptOutput> 
         findingCount: output.findings.length,
         summary: output.summary,
         findings: output.findings,
+      }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualClientCheckin(args: string): Promise<GenerateClientCheckinBriefOutput> {
+  const parsedArgs = parseClientCheckinCommandArgs(args);
+  const parsedInput = generateClientCheckinBriefInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'client-checkin',
+      'manual',
+      JSON.stringify({ command: '/ops client-checkin', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'client-checkin',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await clientCheckinGenerateBriefSkill.execute(parsedInput, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        status: output.status,
+        summary: output.summary,
+        talkingPoints: output.talkingPoints,
+        openIssues: output.openIssues,
+        followUpQuestions: output.followUpQuestions,
+        signals: output.signals,
       }),
       jobId,
     ]);

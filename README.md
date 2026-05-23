@@ -114,8 +114,11 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 
 - `/ops qa-review <account> :: <transcript>` — structured QA score + findings for a pasted call/chat transcript
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
+- `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
+- Client check-ins run as `agent_id = client-checkin` and do not mutate external systems
 
-Requires LiteLLM + `ANTHROPIC_API_KEY`. Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
+Requires LiteLLM + `ANTHROPIC_API_KEY`. Optional: `CLIENT_CHECKIN_MODEL`
+defaults to `ops-claude-sonnet`. Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
 
 **Auto QA (slice 2):** point Assistable post-call webhooks at `POST /webhooks/assistable/post-call` and set `QA_AUTO_REVIEW_ENABLED=true`. Reviews are stored on job records; Slack alerts are **off by default** (set `QA_REVIEW_SLACK_ENABLED=true` only if you want them). See Phase 5 doc for env vars.
 
