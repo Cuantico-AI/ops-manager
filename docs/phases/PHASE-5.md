@@ -176,6 +176,23 @@ prompt-change requests, current prompt text, conversation samples, Assistable/GH
 credentials, or secrets in Slack. The scheduled job suppresses Slack posts when no
 blocked or high-risk reviews exist in the configured window.
 
+## Slice 10 (this PR) — Ops fleet digest
+
+- Seed `ops-digest` agent row in Postgres
+- Add read-only `ops.fleet-digest` skill for a cross-role Phase 5 fleet rollup
+- Add `/ops fleet-digest [hours]` with aliases:
+  - `/ops ops-digest [hours]`
+  - `/ops attention-digest [hours]`
+- Add optional scheduled unified Phase 5 attention posts when `OPS_FLEET_DIGEST_ENABLED=true`
+
+The digest combines persisted QA failures, client check-in watch/at-risk briefs, and
+Prompt Ops blocked/high-risk reviews. It surfaces counts, top accounts, cross-role
+attention accounts, QA failure trigger groups, client check-in issue systems, and
+Prompt Ops risk breakdowns. It does not expose raw transcripts, finding quotes,
+prompt-change request text, current prompt text, conversation samples, account health
+signal payloads, credentials, or secrets in Slack. The scheduled job suppresses Slack
+posts when no Phase 5 attention signals exist in the configured window.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -217,4 +234,8 @@ ANTHROPIC_API_KEY=
 # PROMPT_OPS_FLEET_SUMMARY_CRON=0 16 * * *
 # PROMPT_OPS_FLEET_SUMMARY_HOURS=168
 # PROMPT_OPS_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
+# OPS_FLEET_DIGEST_ENABLED=false
+# OPS_FLEET_DIGEST_CRON=30 16 * * *
+# OPS_FLEET_DIGEST_HOURS=24
+# OPS_FLEET_DIGEST_CHANNEL=#ops-manager-alerts
 ```

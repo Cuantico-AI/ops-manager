@@ -119,6 +119,7 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - `/ops qa-fleet-failures [hours]` — alias focused on recent fleet QA failures
 - `/ops qa-show <call_id>` — persisted QA review for an Assistable call ID
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
+- `/ops fleet-digest [hours]` — cross-role digest combining QA, client check-in, and Prompt Ops attention signals
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
 - `/ops checkin-fleet-summary [hours]` — fleet-wide rollup of recent watch/at-risk client check-in briefs
 - `/ops checkin-history <account> [limit]` — recent persisted client check-in briefs for an account
@@ -137,7 +138,9 @@ Set `QA_FLEET_SUMMARY_ENABLED=true` to post a daily fleet QA failure summary whe
 recent failures exist. Set `CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=true` to post a
 daily client check-in fleet attention summary when recent watch/at-risk briefs exist.
 Set `PROMPT_OPS_FLEET_SUMMARY_ENABLED=true` to post a daily Prompt Ops fleet attention
-summary when recent blocked/high-risk reviews exist.
+summary when recent blocked/high-risk reviews exist. Set `OPS_FLEET_DIGEST_ENABLED=true`
+to post a unified Phase 5 fleet attention digest when any cross-role attention signals
+exist.
 Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
 
 **Auto QA (slice 2):** point Assistable post-call webhooks at `POST /webhooks/assistable/post-call` and set `QA_AUTO_REVIEW_ENABLED=true`. Reviews are stored in `qa_reviews` and linked to job records; Slack alerts are **off by default** (set `QA_REVIEW_SLACK_ENABLED=true` only if you want them). See Phase 5 doc for env vars.

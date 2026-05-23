@@ -83,6 +83,12 @@ import {
   type ReviewPromptOpsRequestOutput,
 } from '../skills/prompt-ops/review-request.js';
 import {
+  formatOpsFleetDigestOutput,
+  opsFleetDigestInputSchema,
+  opsFleetDigestSkill,
+  parseOpsFleetDigestCommandArgs,
+} from '../skills/ops/fleet-digest.js';
+import {
   formatQaReviewRecordOutput,
   getQaReviewInputSchema,
   parseQaShowCommandArgs,
@@ -119,6 +125,7 @@ import {
   type PromptOpsReviewRecord,
 } from '../lib/prompt-ops/reviews.js';
 import type { PromptOpsFleetSummary } from '../lib/prompt-ops/fleet-summary.js';
+import type { OpsFleetDigestSummary } from '../lib/ops/fleet-digest.js';
 import { type FleetQaSummary } from '../lib/qa/fleet-summary.js';
 import {
   persistQaReview,
@@ -270,6 +277,26 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
         await respond({
           response_type: 'ephemeral',
           text: `Fleet health check failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (
+      subcommand === 'fleet-digest' ||
+      subcommand === 'ops-digest' ||
+      subcommand === 'attention-digest'
+    ) {
+      try {
+        const output = await runManualOpsFleetDigest(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatOpsFleetDigestOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Ops fleet digest failed: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
       return;
@@ -835,7 +862,7 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1115,6 +1142,66 @@ async function runManualFleetHealthCheck(): Promise<FleetDailyHealthChecks> {
       jobId,
     ]);
     return checks;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualOpsFleetDigest(args: string): Promise<OpsFleetDigestSummary> {
+  const parsedArgs = parseOpsFleetDigestCommandArgs(args);
+  const parsedInput = opsFleetDigestInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'ops-digest',
+      'manual',
+      JSON.stringify({
+        command: '/ops fleet-digest',
+        ...parsedInput,
+      }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'ops-digest',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await opsFleetDigestSkill.execute(parsedInput, ctx);
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, completed_at = NOW()
+       WHERE id = $3`,
+      [
+        'succeeded',
+        JSON.stringify({
+          sinceHours: output.sinceHours,
+          totalAttentionSignals: output.totalAttentionSignals,
+          accountsWithAttention: output.accountsWithAttention,
+          multiSignalAccounts: output.multiSignalAccounts.length,
+        }),
+        jobId,
+      ],
+    );
+    return output;
   } catch (err) {
     await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
       'failed',
