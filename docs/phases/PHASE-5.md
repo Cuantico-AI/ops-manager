@@ -209,6 +209,20 @@ Job output stores account names, generated brief IDs, statuses, counts, and fail
 it does not expose GHL PIT tokens, Assistable credentials, n8n secrets, or raw account
 health signal payloads in Slack.
 
+## Slice 12 (this PR) — Account Ops digest
+
+- Add read-only `ops.account-digest` skill for one-account Phase 5 rollups
+- Add `/ops account-digest <account> [hours] [--limit=N]` with aliases:
+  - `/ops ops-account-digest <account> [hours] [--limit=N]`
+  - `/ops account-attention <account> [hours] [--limit=N]`
+- Reuse the existing `ops-digest` agent and persisted QA, Client Check-in, and Prompt Ops tables
+
+The account digest gives operators a single Slack view of recent QA failures,
+watch/at-risk check-in briefs, and blocked/high-risk Prompt Ops reviews for one
+client. It reads only persisted metadata and generated summaries; it does not expose
+raw transcripts, finding quotes, prompt-change request text, current prompt text,
+conversation samples, account health signal payloads, credentials, or secrets.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
