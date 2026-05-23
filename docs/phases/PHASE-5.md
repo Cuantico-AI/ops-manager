@@ -101,6 +101,20 @@ outcomes, risks, tests, rollback/monitoring steps, blockers, and clarifying ques
 from pasted context, but it does not update Assistable/GHL/n8n or generate a full
 deployable customer-facing assistant prompt.
 
+## Slice 4 (this PR) — QA persistence and retrieval
+
+- Add `qa_reviews` table for structured QA review history without storing full transcripts
+- Persist manual `/ops qa-review` results and Assistable Auto QA webhook results
+- Add `/ops qa-history <account> [limit]` for recent reviews
+- Add `/ops qa-failures <account> [limit]` for recent failed reviews
+- Add `/ops qa-show <call_id>` for a persisted Assistable call review
+
+The persistence layer stores score, pass/fail, trigger, call ID, summary, structured
+findings, model, escalation flag, transcript character count, and account/job links.
+Webhook reviews are idempotent by `call_id`; retries update the same `qa_reviews`
+record instead of creating duplicates. Raw transcript text remains outside the
+dedicated QA table and audit logs.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:

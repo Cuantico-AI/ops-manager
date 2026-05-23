@@ -22,6 +22,8 @@ import { assistableRefreshOAuthSkill } from './skills/assistable/refresh-oauth.j
 import { ghlSetCustomValueSkill } from './skills/ghl/set-custom-value.js';
 import { clientCheckinGenerateBriefSkill } from './skills/client-checkin/generate-brief.js';
 import { promptOpsReviewRequestSkill } from './skills/prompt-ops/review-request.js';
+import { qaGetReviewSkill } from './skills/qa/get-review.js';
+import { qaListReviewsSkill } from './skills/qa/list-reviews.js';
 import { qaReviewTranscriptSkill } from './skills/qa/review-transcript.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
@@ -48,6 +50,8 @@ registry.register(ghlSetCustomValueSkill);
 registry.register(n8nTriggerWorkflowSkill);
 registry.register(assistableRefreshOAuthSkill);
 registry.register(qaReviewTranscriptSkill);
+registry.register(qaListReviewsSkill);
+registry.register(qaGetReviewSkill);
 registry.register(clientCheckinGenerateBriefSkill);
 registry.register(promptOpsReviewRequestSkill);
 
