@@ -32,6 +32,12 @@ import {
   runPromptOpsFleetSummary,
 } from './prompt-ops-fleet-summary.js';
 import {
+  getOpsFleetDigestCron,
+  isOpsFleetDigestEnabled,
+  OPS_FLEET_DIGEST_QUEUE,
+  runOpsFleetDigest,
+} from './ops-fleet-digest.js';
+import {
   getAssistableOAuthHealthCron,
   ASSISTABLE_OAUTH_HEALTH_QUEUE,
   runAssistableOAuthHealth,
@@ -63,6 +69,7 @@ let fleetDailyHealthWorker: Worker | null = null;
 let qaFleetSummaryWorker: Worker | null = null;
 let clientCheckinFleetSummaryWorker: Worker | null = null;
 let promptOpsFleetSummaryWorker: Worker | null = null;
+let opsFleetDigestWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -252,6 +259,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
     });
   }
 
+  if (isOpsFleetDigestEnabled()) {
+    const opsFleetDigestQueue = getQueue(OPS_FLEET_DIGEST_QUEUE);
+    const opsFleetDigestCron = getOpsFleetDigestCron();
+
+    await opsFleetDigestQueue.obliterate({ force: true });
+    await opsFleetDigestQueue.add(
+      'ops-fleet-digest-tick',
+      {},
+      {
+        repeat: { pattern: opsFleetDigestCron },
+        jobId: 'ops-fleet-digest-repeatable',
+      },
+    );
+
+    logger.info(
+      {
+        cron: opsFleetDigestCron,
+        queue: OPS_FLEET_DIGEST_QUEUE,
+      },
+      'Registered Ops fleet digest cron job',
+    );
+
+    opsFleetDigestWorker = getWorker(OPS_FLEET_DIGEST_QUEUE, async () => {
+      await runOpsFleetDigest(registry);
+    });
+  }
+
   const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
   const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
 
@@ -337,5 +371,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (promptOpsFleetSummaryWorker) {
     await promptOpsFleetSummaryWorker.close();
     promptOpsFleetSummaryWorker = null;
+  }
+  if (opsFleetDigestWorker) {
+    await opsFleetDigestWorker.close();
+    opsFleetDigestWorker = null;
   }
 }
