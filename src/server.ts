@@ -21,6 +21,7 @@ import { n8nTriggerWorkflowSkill } from './skills/n8n/trigger-workflow.js';
 import { assistableRefreshOAuthSkill } from './skills/assistable/refresh-oauth.js';
 import { ghlSetCustomValueSkill } from './skills/ghl/set-custom-value.js';
 import { clientCheckinGenerateBriefSkill } from './skills/client-checkin/generate-brief.js';
+import { promptOpsReviewRequestSkill } from './skills/prompt-ops/review-request.js';
 import { qaReviewTranscriptSkill } from './skills/qa/review-transcript.js';
 import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
@@ -48,6 +49,7 @@ registry.register(n8nTriggerWorkflowSkill);
 registry.register(assistableRefreshOAuthSkill);
 registry.register(qaReviewTranscriptSkill);
 registry.register(clientCheckinGenerateBriefSkill);
+registry.register(promptOpsReviewRequestSkill);
 
 let fastify: ReturnType<typeof Fastify> | null = null;
 

@@ -5,9 +5,10 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build \
-  && mkdir -p dist/agents/qa-review dist/agents/client-checkin \
+  && mkdir -p dist/agents/qa-review dist/agents/client-checkin dist/agents/prompt-ops \
   && cp src/agents/qa-review/prompt.md dist/agents/qa-review/prompt.md \
-  && cp src/agents/client-checkin/prompt.md dist/agents/client-checkin/prompt.md
+  && cp src/agents/client-checkin/prompt.md dist/agents/client-checkin/prompt.md \
+  && cp src/agents/prompt-ops/prompt.md dist/agents/prompt-ops/prompt.md
 
 FROM node:20-alpine AS runner
 WORKDIR /app

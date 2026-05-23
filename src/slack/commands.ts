@@ -40,6 +40,13 @@ import {
   type GenerateClientCheckinBriefOutput,
 } from '../skills/client-checkin/generate-brief.js';
 import {
+  formatPromptOpsReviewOutput,
+  parsePromptOpsCommandArgs,
+  promptOpsReviewRequestSkill,
+  reviewPromptOpsRequestInputSchema,
+  type ReviewPromptOpsRequestOutput,
+} from '../skills/prompt-ops/review-request.js';
+import {
   formatQaReviewOutput,
   qaReviewTranscriptSkill,
   parseQaReviewCommandArgs,
@@ -475,9 +482,37 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (
+      subcommand === 'prompt-ops' ||
+      subcommand === 'promptops' ||
+      subcommand === 'prompt-review'
+    ) {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops prompt-ops <account name> :: <prompt change request>',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualPromptOpsReview(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatPromptOpsReviewOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Prompt Ops review failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops client-checkin, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops client-checkin, /ops prompt-ops, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1280,6 +1315,70 @@ async function runManualClientCheckin(args: string): Promise<GenerateClientCheck
         openIssues: output.openIssues,
         followUpQuestions: output.followUpQuestions,
         signals: output.signals,
+      }),
+      jobId,
+    ]);
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualPromptOpsReview(args: string): Promise<ReviewPromptOpsRequestOutput> {
+  const parsedArgs = parsePromptOpsCommandArgs(args);
+  const parsedInput = reviewPromptOpsRequestInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'prompt-ops',
+      'manual',
+      JSON.stringify({
+        command: '/ops prompt-ops',
+        accountQuery: parsedInput.accountQuery,
+        requestChars: parsedInput.request.length,
+      }),
+      'running',
+      JSON.stringify({
+        accountQuery: parsedInput.accountQuery,
+        requestChars: parsedInput.request.length,
+      }),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'prompt-ops',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await promptOpsReviewRequestSkill.execute(parsedInput, ctx);
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify({
+        riskLevel: output.riskLevel,
+        blocked: output.blocked,
+        summary: output.summary,
+        intendedOutcome: output.intendedOutcome,
+        recommendedChanges: output.recommendedChanges,
+        testPlan: output.testPlan,
+        rollbackPlan: output.rollbackPlan,
+        clarifyingQuestions: output.clarifyingQuestions,
+        blockers: output.blockers,
       }),
       jobId,
     ]);
