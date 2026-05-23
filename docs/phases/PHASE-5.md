@@ -150,6 +150,19 @@ The rollup reads only `qa_reviews` metadata and summaries. It does not fetch or 
 raw transcripts, finding quotes, GHL PIT tokens, Assistable credentials, or n8n secrets.
 The scheduled job suppresses Slack posts when no failures exist in the configured window.
 
+## Slice 8 (this PR) — Client Check-in fleet summary
+
+- Add read-only `client-checkin.list-fleet-risks` skill for fleet-wide persisted check-in rollups
+- Add `/ops checkin-fleet-summary [hours]` for recent healthy/watch/at-risk check-in counts
+- Add `/ops checkin-fleet [hours]` and `/ops client-checkin-fleet [hours]` aliases
+- Add optional scheduled client check-in fleet attention posts when `CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=true`
+
+The rollup reads only persisted `client_checkin_briefs` metadata, generated summaries,
+issue counts, issue systems, and account names. It does not expose GHL PIT tokens,
+Assistable credentials, n8n secrets, or raw account health signal payloads in Slack.
+The scheduled job suppresses Slack posts when no watch/at-risk briefs exist in the
+configured window.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -183,4 +196,8 @@ ANTHROPIC_API_KEY=
 # QA_FLEET_SUMMARY_CRON=0 15 * * *
 # QA_FLEET_SUMMARY_HOURS=24
 # QA_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
+# CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=false
+# CLIENT_CHECKIN_FLEET_SUMMARY_CRON=30 15 * * *
+# CLIENT_CHECKIN_FLEET_SUMMARY_HOURS=168
+# CLIENT_CHECKIN_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
 ```
