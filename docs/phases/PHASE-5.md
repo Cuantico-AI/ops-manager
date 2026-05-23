@@ -193,6 +193,22 @@ prompt-change request text, current prompt text, conversation samples, account h
 signal payloads, credentials, or secrets in Slack. The scheduled job suppresses Slack
 posts when no Phase 5 attention signals exist in the configured window.
 
+## Slice 11 (this PR) — Scheduled client check-in fleet sweep
+
+- Add optional scheduled client check-in brief generation when `CLIENT_CHECKIN_FLEET_SWEEP_ENABLED=true`
+- Reuse read-only `client-checkin.generate-brief` and persist generated briefs to `client_checkin_briefs`
+- Skip accounts with a recent brief inside `CLIENT_CHECKIN_FLEET_SWEEP_MIN_HOURS`
+- Add `/ops checkin-fleet-run [hours]` with aliases:
+  - `/ops client-checkin-fleet-run [hours]`
+  - `/ops checkin-sweep [hours]`
+
+The sweep runs as `agent_id = client-checkin`, uses bounded concurrency, and does not
+post Slack alerts directly. Existing client check-in fleet summaries and the unified
+Ops digest read the persisted briefs and decide whether to post attention summaries.
+Job output stores account names, generated brief IDs, statuses, counts, and failures;
+it does not expose GHL PIT tokens, Assistable credentials, n8n secrets, or raw account
+health signal payloads in Slack.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -230,6 +246,13 @@ ANTHROPIC_API_KEY=
 # CLIENT_CHECKIN_FLEET_SUMMARY_CRON=30 15 * * *
 # CLIENT_CHECKIN_FLEET_SUMMARY_HOURS=168
 # CLIENT_CHECKIN_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
+# CLIENT_CHECKIN_FLEET_SWEEP_ENABLED=false
+# CLIENT_CHECKIN_FLEET_SWEEP_CRON=0 15 * * *
+# CLIENT_CHECKIN_FLEET_SWEEP_MIN_HOURS=24
+# CLIENT_CHECKIN_FLEET_SWEEP_CONCURRENCY=3
+# CLIENT_CHECKIN_FLEET_SWEEP_INCLUDE_INACTIVE=false
+# CLIENT_CHECKIN_FLEET_SWEEP_LIMIT=
+# CLIENT_CHECKIN_FLEET_SWEEP_MODEL=
 # PROMPT_OPS_FLEET_SUMMARY_ENABLED=false
 # PROMPT_OPS_FLEET_SUMMARY_CRON=0 16 * * *
 # PROMPT_OPS_FLEET_SUMMARY_HOURS=168

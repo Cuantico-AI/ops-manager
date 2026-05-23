@@ -121,6 +121,7 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
 - `/ops fleet-digest [hours]` — cross-role digest combining QA, client check-in, and Prompt Ops attention signals
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
+- `/ops checkin-fleet-run [hours]` — manually generate missing/stale client check-in briefs across the fleet
 - `/ops checkin-fleet-summary [hours]` — fleet-wide rollup of recent watch/at-risk client check-in briefs
 - `/ops checkin-history <account> [limit]` — recent persisted client check-in briefs for an account
 - `/ops checkin-show <brief_id>` — retrieve a persisted client check-in brief
@@ -135,8 +136,10 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 Requires LiteLLM + `ANTHROPIC_API_KEY`. Optional model overrides include
 `CLIENT_CHECKIN_MODEL` and `PROMPT_OPS_MODEL`; both default to `ops-claude-sonnet`.
 Set `QA_FLEET_SUMMARY_ENABLED=true` to post a daily fleet QA failure summary when
-recent failures exist. Set `CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=true` to post a
-daily client check-in fleet attention summary when recent watch/at-risk briefs exist.
+recent failures exist. Set `CLIENT_CHECKIN_FLEET_SWEEP_ENABLED=true` to generate
+daily persisted check-in briefs for accounts without a recent brief, then set
+`CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=true` to post a daily client check-in fleet
+attention summary when recent watch/at-risk briefs exist.
 Set `PROMPT_OPS_FLEET_SUMMARY_ENABLED=true` to post a daily Prompt Ops fleet attention
 summary when recent blocked/high-risk reviews exist. Set `OPS_FLEET_DIGEST_ENABLED=true`
 to post a unified Phase 5 fleet attention digest when any cross-role attention signals
