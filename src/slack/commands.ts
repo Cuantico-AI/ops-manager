@@ -130,6 +130,12 @@ import {
 } from '../lib/client-checkin/briefs.js';
 import type { ClientCheckinFleetSummary } from '../lib/client-checkin/fleet-summary.js';
 import {
+  formatClientCheckinAttentionSweepOutput,
+  parseClientCheckinAttentionSweepCommandArgs,
+  type ClientCheckinAttentionSweepSummary,
+} from '../lib/client-checkin/attention-sweep.js';
+import { runClientCheckinAttentionSweep } from '../jobs/client-checkin-attention-sweep.js';
+import {
   formatClientCheckinFleetSweepOutput,
   parseClientCheckinFleetSweepCommandArgs,
   type ClientCheckinFleetSweepSummary,
@@ -735,6 +741,28 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
     }
 
     if (
+      subcommand === 'checkin-attention-run' ||
+      subcommand === 'checkin-attention-sweep' ||
+      subcommand === 'client-checkin-attention-run'
+    ) {
+      try {
+        const output = await runManualClientCheckinAttentionSweep(args, registry);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatClientCheckinAttentionSweepOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `Client check-in attention sweep failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+      }
+      return;
+    }
+
+    if (
       subcommand === 'checkin-fleet-run' ||
       subcommand === 'client-checkin-fleet-run' ||
       subcommand === 'checkin-sweep'
@@ -951,7 +979,7 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops account-attention-run, /ops account-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-fleet-run, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops fleet-digest, /ops account-attention-run, /ops account-digest, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops checkin-attention-run, /ops checkin-fleet-run, /ops checkin-fleet-summary, /ops checkin-history, /ops checkin-show, /ops prompt-ops, /ops prompt-fleet-summary, /ops prompt-history, /ops prompt-show, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -2185,6 +2213,21 @@ async function runManualClientCheckinFleetSweep(
     triggerType: 'manual',
     triggerPayload: {
       command: '/ops checkin-fleet-run',
+      ...parsedArgs,
+    },
+    input: parsedArgs,
+  });
+}
+
+async function runManualClientCheckinAttentionSweep(
+  args: string,
+  registry: SkillRegistry,
+): Promise<ClientCheckinAttentionSweepSummary> {
+  const parsedArgs = parseClientCheckinAttentionSweepCommandArgs(args);
+  return runClientCheckinAttentionSweep(registry, {
+    triggerType: 'manual',
+    triggerPayload: {
+      command: '/ops checkin-attention-run',
       ...parsedArgs,
     },
     input: parsedArgs,

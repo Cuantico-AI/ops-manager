@@ -4,6 +4,12 @@ import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
+  CLIENT_CHECKIN_ATTENTION_SWEEP_QUEUE,
+  getClientCheckinAttentionSweepCron,
+  isClientCheckinAttentionSweepEnabled,
+  runClientCheckinAttentionSweep,
+} from './client-checkin-attention-sweep.js';
+import {
   CLIENT_CHECKIN_FLEET_SUMMARY_QUEUE,
   getClientCheckinFleetSummaryCron,
   isClientCheckinFleetSummaryEnabled,
@@ -79,6 +85,7 @@ let assistableOAuthHealthWorker: Worker | null = null;
 let n8nWorkflowHealthWorker: Worker | null = null;
 let fleetDailyHealthWorker: Worker | null = null;
 let qaFleetSummaryWorker: Worker | null = null;
+let clientCheckinAttentionSweepWorker: Worker | null = null;
 let clientCheckinFleetSweepWorker: Worker | null = null;
 let clientCheckinFleetSummaryWorker: Worker | null = null;
 let promptOpsFleetSummaryWorker: Worker | null = null;
@@ -243,6 +250,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
 
     clientCheckinFleetSweepWorker = getWorker(CLIENT_CHECKIN_FLEET_SWEEP_QUEUE, async () => {
       await runClientCheckinFleetSweep(registry);
+    });
+  }
+
+  if (isClientCheckinAttentionSweepEnabled()) {
+    const clientCheckinAttentionSweepQueue = getQueue(CLIENT_CHECKIN_ATTENTION_SWEEP_QUEUE);
+    const clientCheckinAttentionSweepCron = getClientCheckinAttentionSweepCron();
+
+    await clientCheckinAttentionSweepQueue.obliterate({ force: true });
+    await clientCheckinAttentionSweepQueue.add(
+      'client-checkin-attention-sweep-tick',
+      {},
+      {
+        repeat: { pattern: clientCheckinAttentionSweepCron },
+        jobId: 'client-checkin-attention-sweep-repeatable',
+      },
+    );
+
+    logger.info(
+      {
+        cron: clientCheckinAttentionSweepCron,
+        queue: CLIENT_CHECKIN_ATTENTION_SWEEP_QUEUE,
+      },
+      'Registered client check-in attention sweep cron job',
+    );
+
+    clientCheckinAttentionSweepWorker = getWorker(CLIENT_CHECKIN_ATTENTION_SWEEP_QUEUE, async () => {
+      await runClientCheckinAttentionSweep(registry);
     });
   }
 
@@ -435,6 +469,10 @@ export async function stopScheduledJobs(): Promise<void> {
   if (clientCheckinFleetSweepWorker) {
     await clientCheckinFleetSweepWorker.close();
     clientCheckinFleetSweepWorker = null;
+  }
+  if (clientCheckinAttentionSweepWorker) {
+    await clientCheckinAttentionSweepWorker.close();
+    clientCheckinAttentionSweepWorker = null;
   }
   if (clientCheckinFleetSummaryWorker) {
     await clientCheckinFleetSummaryWorker.close();
