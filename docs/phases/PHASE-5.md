@@ -24,17 +24,17 @@ Phase 5 adds LLM-orchestrated agent roles that call existing skills. The first r
 Customer: Hello...
 ```
 
-The ` :: ` delimiter separates account name from transcript text.
+The `::` delimiter separates account name from transcript text.
 
 ### Review output
 
 Each review returns:
 
-| Field | Meaning |
-| --- | --- |
-| `score` | 0–100 quality score |
-| `pass` | Whether the interaction meets minimum QA bar |
-| `summary` | Short narrative summary |
+| Field        | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `score`      | 0–100 quality score                                               |
+| `pass`       | Whether the interaction meets minimum QA bar                      |
+| `summary`    | Short narrative summary                                           |
 | `findings[]` | Structured issues with severity, category, detail, optional quote |
 
 ### Limitations (slice 1)
@@ -47,14 +47,14 @@ Each review returns:
 
 Policy (designed for ~1M calls/month):
 
-| Rule | Default |
-| --- | --- |
-| Auto QA model | Haiku (`QA_AUTO_REVIEW_MODEL=ops-claude-haiku`) |
-| Escalation model | Sonnet on Haiku FAIL (`QA_REVIEW_ESCALATION_MODEL=ops-claude-sonnet`) |
-| Random sample | 1.5% of eligible calls (`QA_REVIEW_SAMPLE_RATE=0.015`) |
-| Always review | Negative sentiment, negative tags, `ai_call_error_*` tags, failed task completion |
-| Skip | Under 90s, voicemail/machine/no-answer/busy tags, missing transcript/location |
-| Slack alerts | Off by default; optional (`QA_REVIEW_SLACK_ENABLED=true`, mode `escalation`) |
+| Rule             | Default                                                                           |
+| ---------------- | --------------------------------------------------------------------------------- |
+| Auto QA model    | Haiku (`QA_AUTO_REVIEW_MODEL=ops-claude-haiku`)                                   |
+| Escalation model | Sonnet on Haiku FAIL (`QA_REVIEW_ESCALATION_MODEL=ops-claude-sonnet`)             |
+| Random sample    | 1.5% of eligible calls (`QA_REVIEW_SAMPLE_RATE=0.015`)                            |
+| Always review    | Negative sentiment, negative tags, `ai_call_error_*` tags, failed task completion |
+| Skip             | Under 90s, voicemail/machine/no-answer/busy tags, missing transcript/location     |
+| Slack alerts     | Off by default; optional (`QA_REVIEW_SLACK_ENABLED=true`, mode `escalation`)      |
 
 Webhook endpoint:
 
@@ -114,6 +114,30 @@ findings, model, escalation flag, transcript character count, and account/job li
 Webhook reviews are idempotent by `call_id`; retries update the same `qa_reviews`
 record instead of creating duplicates. Raw transcript text remains outside the
 dedicated QA table and audit logs.
+
+## Slice 5 (this PR) — Client Check-in persistence and retrieval
+
+- Add `client_checkin_briefs` table for generated check-in history
+- Persist manual `/ops client-checkin` brief output and source health signals
+- Add `/ops checkin-history <account> [limit]` for recent client briefs
+- Add `/ops checkin-show <brief_id>` for a persisted brief
+
+The persistence layer stores the generated status, summary, talking points, open
+issues, follow-up questions, model, generated timestamp, and non-secret health
+signals. It does not store GHL PIT tokens or Assistable credentials.
+
+## Slice 6 (this PR) — Prompt Ops persistence and retrieval
+
+- Add `prompt_ops_reviews` table for generated Prompt Ops review history
+- Persist manual `/ops prompt-ops` review output and context character counts
+- Add `/ops prompt-history <account> [limit]` for recent Prompt Ops reviews
+- Add `/ops prompt-history <account> --blocked` for blocked-only review history
+- Add `/ops prompt-show <review_id>` for a persisted Prompt Ops review
+
+The persistence layer stores the risk level, blocked flag, summary, intended
+outcome, recommendations, test/rollback plans, clarifying questions, blockers,
+model, reviewed timestamp, and context character counts. It does not store the
+raw prompt-change request, current prompt, or conversation sample text.
 
 ## Required env vars
 
