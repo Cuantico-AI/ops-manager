@@ -239,6 +239,27 @@ records, expose raw transcripts, finding quotes, prompt-change request text, cur
 prompt text, conversation samples, account health signal payloads, credentials, or
 secrets. The scheduled job suppresses Slack posts when no accounts meet the filter.
 
+## Slice 14 (this PR) — Attention-targeted client check-in sweep
+
+- Add optional scheduled check-in brief generation for cross-role attention accounts
+  when `CLIENT_CHECKIN_ATTENTION_SWEEP_ENABLED=true`
+- Reuse the existing Ops fleet digest candidate selection with `--min-signals`
+- Reuse `client-checkin.generate-brief` and persist generated briefs to
+  `client_checkin_briefs`
+- Skip attention candidates with a recent brief inside
+  `CLIENT_CHECKIN_ATTENTION_SWEEP_MIN_HOURS`
+- Add `/ops checkin-attention-run [hours] [--limit=N] [--min-signals=N] [--min-hours=N]`
+  with aliases:
+  - `/ops checkin-attention-sweep [hours] ...`
+  - `/ops client-checkin-attention-run [hours] ...`
+
+The attention sweep runs as `agent_id = client-checkin`, targets only accounts already
+surfaced by persisted Phase 5 attention signals, and does not post Slack alerts
+directly. Downstream fleet digests and account attention runs consume the refreshed
+briefs. Job output stores account names, generated brief IDs, statuses, counts, and
+failures; it does not expose GHL PIT tokens, Assistable credentials, n8n secrets, raw
+transcripts, prompt-change text, or raw account health signal payloads in Slack.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -283,6 +304,14 @@ ANTHROPIC_API_KEY=
 # CLIENT_CHECKIN_FLEET_SWEEP_INCLUDE_INACTIVE=false
 # CLIENT_CHECKIN_FLEET_SWEEP_LIMIT=
 # CLIENT_CHECKIN_FLEET_SWEEP_MODEL=
+# CLIENT_CHECKIN_ATTENTION_SWEEP_ENABLED=false
+# CLIENT_CHECKIN_ATTENTION_SWEEP_CRON=35 16 * * *
+# CLIENT_CHECKIN_ATTENTION_SWEEP_HOURS=24
+# CLIENT_CHECKIN_ATTENTION_SWEEP_MIN_SIGNALS=2
+# CLIENT_CHECKIN_ATTENTION_SWEEP_MIN_HOURS=24
+# CLIENT_CHECKIN_ATTENTION_SWEEP_LIMIT=5
+# CLIENT_CHECKIN_ATTENTION_SWEEP_CONCURRENCY=3
+# CLIENT_CHECKIN_ATTENTION_SWEEP_MODEL=
 # PROMPT_OPS_FLEET_SUMMARY_ENABLED=false
 # PROMPT_OPS_FLEET_SUMMARY_CRON=0 16 * * *
 # PROMPT_OPS_FLEET_SUMMARY_HOURS=168

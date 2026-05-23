@@ -123,6 +123,7 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - `/ops account-attention-run [hours] [--limit=N] [--min-signals=N]` — batch compact account digests for accounts with cross-role attention
 - `/ops account-digest <account> [hours] [--limit=N]` — cross-role Phase 5 digest for one account
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
+- `/ops checkin-attention-run [hours] [--limit=N] [--min-signals=N]` — generate stale/missing briefs for accounts with cross-role attention
 - `/ops checkin-fleet-run [hours]` — manually generate missing/stale client check-in briefs across the fleet
 - `/ops checkin-fleet-summary [hours]` — fleet-wide rollup of recent watch/at-risk client check-in briefs
 - `/ops checkin-history <account> [limit]` — recent persisted client check-in briefs for an account
@@ -142,6 +143,9 @@ recent failures exist. Set `CLIENT_CHECKIN_FLEET_SWEEP_ENABLED=true` to generate
 daily persisted check-in briefs for accounts without a recent brief, then set
 `CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=true` to post a daily client check-in fleet
 attention summary when recent watch/at-risk briefs exist.
+Set `CLIENT_CHECKIN_ATTENTION_SWEEP_ENABLED=true` to refresh stale/missing check-in
+briefs for accounts selected by the cross-role attention filter before the account
+attention run.
 Set `PROMPT_OPS_FLEET_SUMMARY_ENABLED=true` to post a daily Prompt Ops fleet attention
 summary when recent blocked/high-risk reviews exist. Set `OPS_FLEET_DIGEST_ENABLED=true`
 to post a unified Phase 5 fleet attention digest when any cross-role attention signals
