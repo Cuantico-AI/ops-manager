@@ -113,6 +113,9 @@ with Approve/Reject buttons. Phase 4 scope: [docs/phases/PHASE-4.md](./docs/phas
 Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 
 - `/ops qa-review <account> :: <transcript>` — structured QA score + findings for a pasted call/chat transcript
+- `/ops qa-history <account> [limit]` — recent persisted QA reviews for an account
+- `/ops qa-failures <account> [limit]` — recent failed QA reviews for an account
+- `/ops qa-show <call_id>` — persisted QA review for an Assistable call ID
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
 - Client check-ins run as `agent_id = client-checkin` and do not mutate external systems

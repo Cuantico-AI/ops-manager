@@ -47,12 +47,29 @@ import {
   type ReviewPromptOpsRequestOutput,
 } from '../skills/prompt-ops/review-request.js';
 import {
+  formatQaReviewRecordOutput,
+  getQaReviewInputSchema,
+  parseQaShowCommandArgs,
+  qaGetReviewSkill,
+} from '../skills/qa/get-review.js';
+import {
+  formatQaReviewHistoryOutput,
+  listQaReviewsInputSchema,
+  parseQaHistoryCommandArgs,
+  qaListReviewsSkill,
+} from '../skills/qa/list-reviews.js';
+import {
   formatQaReviewOutput,
   qaReviewTranscriptSkill,
   parseQaReviewCommandArgs,
   reviewTranscriptInputSchema,
   type ReviewTranscriptOutput,
 } from '../skills/qa/review-transcript.js';
+import {
+  persistQaReview,
+  type ListQaReviewsOutput,
+  type QaReviewRecord,
+} from '../lib/qa/reviews.js';
 import {
   checkAssistableOAuthInputSchema,
   assistableCheckOAuthStatusSkill,
@@ -454,6 +471,78 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
       return;
     }
 
+    if (subcommand === 'qa-history' || subcommand === 'qa-reviews') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops qa-history <account name> [limit]',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualQaHistory(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatQaReviewHistoryOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `QA history failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (subcommand === 'qa-failures' || subcommand === 'qa-fails') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops qa-failures <account name> [limit]',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualQaHistory(args, { failingOnly: true });
+        await respond({
+          response_type: 'ephemeral',
+          text: formatQaReviewHistoryOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `QA failures failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (subcommand === 'qa-show' || subcommand === 'qa-review-show') {
+      if (!args) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Usage: /ops qa-show <call_id>',
+        });
+        return;
+      }
+
+      try {
+        const output = await runManualQaShow(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatQaReviewRecordOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `QA show failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
     if (
       subcommand === 'client-checkin' ||
       subcommand === 'client-check-in' ||
@@ -512,7 +601,7 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
 
     await respond({
       response_type: 'ephemeral',
-      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops client-checkin, /ops prompt-ops, /ops ghl-snapshot, or /ops ghl-inventory`,
+      text: `Unknown subcommand: ${subcommand}. Try /ops ping, /ops accounts, /ops sync-roster, /ops check-tokens, /ops check-assistable, /ops check-n8n, /ops fleet-health, /ops jobs, /ops approve, /ops set-custom-value, /ops trigger-n8n, /ops refresh-assistable, /ops qa-review, /ops qa-history, /ops qa-show, /ops client-checkin, /ops prompt-ops, /ops ghl-snapshot, or /ops ghl-inventory`,
     });
   });
 }
@@ -1253,17 +1342,154 @@ async function runManualQaReview(args: string): Promise<ReviewTranscriptOutput> 
 
   try {
     const output = await qaReviewTranscriptSkill.execute(parsedInput, ctx);
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
+    const persistedReview = await persistQaReview({
+      jobId,
+      output,
+      reviewTrigger: output.reviewTrigger ?? 'manual',
+    });
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, account_id = $3, completed_at = NOW()
+       WHERE id = $4`,
+      [
+        'succeeded',
+        JSON.stringify({
+          qaReviewId: persistedReview.id,
+          score: output.score,
+          pass: output.pass,
+          findingCount: output.findings.length,
+          summary: output.summary,
+          findings: output.findings,
+        }),
+        output.accountId,
+        jobId,
+      ],
+    );
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
       JSON.stringify({
-        score: output.score,
-        pass: output.pass,
-        findingCount: output.findings.length,
-        summary: output.summary,
-        findings: output.findings,
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
       }),
       jobId,
     ]);
+    throw err;
+  }
+}
+
+async function runManualQaHistory(
+  args: string,
+  opts: { failingOnly?: boolean } = {},
+): Promise<ListQaReviewsOutput> {
+  const parsedArgs = parseQaHistoryCommandArgs(args, opts);
+  const parsedInput = listQaReviewsInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'qa-review',
+      'manual',
+      JSON.stringify({
+        command: parsedInput.failingOnly ? '/ops qa-failures' : '/ops qa-history',
+        ...parsedInput,
+      }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'qa-review',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await qaListReviewsSkill.execute(parsedInput, ctx);
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, account_id = $3, completed_at = NOW()
+       WHERE id = $4`,
+      [
+        'succeeded',
+        JSON.stringify({
+          accountId: output.accountId,
+          accountName: output.accountName,
+          reviewCount: output.reviews.length,
+          failingOnly: output.failingOnly,
+        }),
+        output.accountId,
+        jobId,
+      ],
+    );
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualQaShow(args: string): Promise<QaReviewRecord> {
+  const parsedArgs = parseQaShowCommandArgs(args);
+  const parsedInput = getQaReviewInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'qa-review',
+      'manual',
+      JSON.stringify({ command: '/ops qa-show', ...parsedInput }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'qa-review',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await qaGetReviewSkill.execute(parsedInput, ctx);
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, account_id = $3, completed_at = NOW()
+       WHERE id = $4`,
+      [
+        'succeeded',
+        JSON.stringify({
+          qaReviewId: output.id,
+          accountId: output.accountId,
+          accountName: output.accountName,
+          callId: output.callId,
+          score: output.score,
+          pass: output.pass,
+          findingCount: output.findings.length,
+        }),
+        output.accountId,
+        jobId,
+      ],
+    );
     return output;
   } catch (err) {
     await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [

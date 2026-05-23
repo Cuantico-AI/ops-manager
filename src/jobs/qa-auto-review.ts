@@ -17,6 +17,7 @@ import {
 } from '../lib/qa/review-policy.js';
 import { formatAutoQaReviewSlackMessage } from '../lib/qa/slack-notify.js';
 import { getQueue, getWorker } from '../lib/queue/client.js';
+import { persistQaReview } from '../lib/qa/reviews.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
   runEscalatedQaReview,
@@ -135,6 +136,12 @@ export async function runQaAutoReview(
     );
 
     const escalated = output.modelUsed !== primaryModel;
+    const persistedReview = await persistQaReview({
+      jobId,
+      output,
+      reviewTrigger: data.decision.trigger,
+      escalated,
+    });
 
     await ctx.audit.log({
       jobId,
@@ -191,6 +198,7 @@ export async function runQaAutoReview(
         pass: output.pass,
         modelUsed: output.modelUsed,
         escalated,
+        qaReviewId: persistedReview.id,
         findingCount: output.findings.length,
         summary: output.summary,
         findings: output.findings,
