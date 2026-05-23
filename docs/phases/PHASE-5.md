@@ -139,6 +139,17 @@ outcome, recommendations, test/rollback plans, clarifying questions, blockers,
 model, reviewed timestamp, and context character counts. It does not store the
 raw prompt-change request, current prompt, or conversation sample text.
 
+## Slice 7 (this PR) — Fleet QA summary
+
+- Add read-only `qa.list-fleet-failures` skill for fleet-wide persisted QA rollups
+- Add `/ops qa-fleet-summary [hours]` for recent QA pass/fail, pass rate, and top failure groups
+- Add `/ops qa-fleet-failures [hours]` as an alias for operators looking for failures
+- Add optional scheduled QA fleet failure posts when `QA_FLEET_SUMMARY_ENABLED=true`
+
+The rollup reads only `qa_reviews` metadata and summaries. It does not fetch or expose
+raw transcripts, finding quotes, GHL PIT tokens, Assistable credentials, or n8n secrets.
+The scheduled job suppresses Slack posts when no failures exist in the configured window.
+
 ## Required env vars
 
 Uses the existing LiteLLM stack:
@@ -168,4 +179,8 @@ ANTHROPIC_API_KEY=
 # QA_REVIEW_SLACK_ENABLED=false
 # QA_REVIEW_SLACK_MODE=escalation
 # QA_REVIEW_SLACK_CHANNEL=#ops-manager-alerts
+# QA_FLEET_SUMMARY_ENABLED=false
+# QA_FLEET_SUMMARY_CRON=0 15 * * *
+# QA_FLEET_SUMMARY_HOURS=24
+# QA_FLEET_SUMMARY_CHANNEL=#ops-manager-alerts
 ```

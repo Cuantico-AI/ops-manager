@@ -83,6 +83,12 @@ import {
   qaListReviewsSkill,
 } from '../skills/qa/list-reviews.js';
 import {
+  formatQaFleetSummaryOutput,
+  listFleetQaFailuresInputSchema,
+  parseQaFleetSummaryCommandArgs,
+  qaListFleetFailuresSkill,
+} from '../skills/qa/list-fleet-failures.js';
+import {
   formatQaReviewOutput,
   qaReviewTranscriptSkill,
   parseQaReviewCommandArgs,
@@ -99,6 +105,9 @@ import {
   type ListPromptOpsReviewsOutput,
   type PromptOpsReviewRecord,
 } from '../lib/prompt-ops/reviews.js';
+import {
+  type FleetQaSummary,
+} from '../lib/qa/fleet-summary.js';
 import {
   persistQaReview,
   type ListQaReviewsOutput,
@@ -548,6 +557,26 @@ export function registerCommands(app: App, registry: SkillRegistry): void {
         await respond({
           response_type: 'ephemeral',
           text: `QA failures failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      return;
+    }
+
+    if (
+      subcommand === 'qa-fleet-summary' ||
+      subcommand === 'qa-fleet' ||
+      subcommand === 'qa-fleet-failures'
+    ) {
+      try {
+        const output = await runManualQaFleetSummary(args);
+        await respond({
+          response_type: 'ephemeral',
+          text: formatQaFleetSummaryOutput(output),
+        });
+      } catch (err) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `QA fleet summary failed: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
       return;
@@ -1575,6 +1604,67 @@ async function runManualQaHistory(
           failingOnly: output.failingOnly,
         }),
         output.accountId,
+        jobId,
+      ],
+    );
+    return output;
+  } catch (err) {
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify({
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : 'Error',
+      }),
+      jobId,
+    ]);
+    throw err;
+  }
+}
+
+async function runManualQaFleetSummary(args: string): Promise<FleetQaSummary> {
+  const parsedArgs = parseQaFleetSummaryCommandArgs(args);
+  const parsedInput = listFleetQaFailuresInputSchema.parse(parsedArgs);
+  const jobId = randomUUID();
+
+  await query(
+    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      jobId,
+      'qa-review',
+      'manual',
+      JSON.stringify({
+        command: '/ops qa-fleet-summary',
+        ...parsedInput,
+      }),
+      'running',
+      JSON.stringify(parsedInput),
+    ],
+  );
+
+  const ctx: SkillContext = {
+    jobId,
+    agentId: 'qa-review',
+    audit: auditLogger,
+    approval: approvalGate,
+    llm: llmClient,
+  };
+
+  try {
+    const output = await qaListFleetFailuresSkill.execute(parsedInput, ctx);
+    await query(
+      `UPDATE jobs
+       SET status = $1, output = $2, completed_at = NOW()
+       WHERE id = $3`,
+      [
+        'succeeded',
+        JSON.stringify({
+          sinceHours: output.sinceHours,
+          totalReviews: output.totalReviews,
+          failedReviews: output.failedReviews,
+          passRate: output.passRate,
+          failureCount: output.failures.length,
+        }),
         jobId,
       ],
     );
