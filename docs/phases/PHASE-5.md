@@ -84,9 +84,22 @@ The first slice uses the latest stored GHL PIT, Assistable OAuth, and n8n workfl
 health fields on the account record. It does not call external APIs directly, mutate
 client systems, schedule recurring check-ins, or write a dedicated check-in table.
 
-## Slice 3b (next)
+## Slice 3b (this PR) — Prompt Ops
 
-- Prompt Ops agent role
+- Seed `prompt-ops` agent row in Postgres
+- `prompt-ops.review-request` — read-only LLM-generated prompt-change review brief
+- `/ops prompt-ops <account> :: <prompt change request>` (aliases `/ops promptops`, `/ops prompt-review`)
+
+### Usage
+
+```
+/ops prompt-ops Complete Lending :: tighten objection handling for callers who ask about pricing
+```
+
+This slice keeps Prompt Ops at the operational review layer. It can summarize intended
+outcomes, risks, tests, rollback/monitoring steps, blockers, and clarifying questions
+from pasted context, but it does not update Assistable/GHL/n8n or generate a full
+deployable customer-facing assistant prompt.
 
 ## Required env vars
 
@@ -100,6 +113,8 @@ ANTHROPIC_API_KEY=
 # QA_REVIEW_MODEL=ops-claude-sonnet
 # QA_REVIEW_MAX_TRANSCRIPT_CHARS=50000
 # CLIENT_CHECKIN_MODEL=ops-claude-sonnet
+# PROMPT_OPS_MODEL=ops-claude-sonnet
+# PROMPT_OPS_MAX_CONTEXT_CHARS=30000
 
 # Phase 5 slice 2 — auto QA from Assistable post-call webhooks
 # QA_AUTO_REVIEW_ENABLED=true
