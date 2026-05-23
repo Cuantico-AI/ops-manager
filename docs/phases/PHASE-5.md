@@ -68,9 +68,24 @@ Assistable/GHL post-call workflows must include `location_id`, `call_id`, `full_
 
 Set `QA_AUTO_REVIEW_ENABLED=true` on the droplet after wiring the webhook.
 
-## Slice 3 (next)
+## Slice 3a (this PR) — Client Check-in
 
-- Client Check-in agent role
+- Seed `client-checkin` agent row in Postgres
+- `client-checkin.generate-brief` — LLM-generated client brief from stored account health signals
+- `/ops client-checkin <account>` (alias `/ops check-in`)
+
+### Usage
+
+```
+/ops client-checkin Complete Lending
+```
+
+The first slice uses the latest stored GHL PIT, Assistable OAuth, and n8n workflow
+health fields on the account record. It does not call external APIs directly, mutate
+client systems, schedule recurring check-ins, or write a dedicated check-in table.
+
+## Slice 3b (next)
+
 - Prompt Ops agent role
 
 ## Required env vars
@@ -84,6 +99,7 @@ ANTHROPIC_API_KEY=
 # Optional:
 # QA_REVIEW_MODEL=ops-claude-sonnet
 # QA_REVIEW_MAX_TRANSCRIPT_CHARS=50000
+# CLIENT_CHECKIN_MODEL=ops-claude-sonnet
 
 # Phase 5 slice 2 — auto QA from Assistable post-call webhooks
 # QA_AUTO_REVIEW_ENABLED=true
