@@ -4,6 +4,12 @@ import { getQueue, getWorker } from '../lib/queue/client.js';
 import { logger } from '../lib/logger.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import {
+  CLIENT_CHECKIN_FLEET_SUMMARY_QUEUE,
+  getClientCheckinFleetSummaryCron,
+  isClientCheckinFleetSummaryEnabled,
+  runClientCheckinFleetSummary,
+} from './client-checkin-fleet-summary.js';
+import {
   getFleetDailyHealthCron,
   FLEET_DAILY_HEALTH_QUEUE,
   runFleetDailyHealth,
@@ -49,6 +55,7 @@ let assistableOAuthHealthWorker: Worker | null = null;
 let n8nWorkflowHealthWorker: Worker | null = null;
 let fleetDailyHealthWorker: Worker | null = null;
 let qaFleetSummaryWorker: Worker | null = null;
+let clientCheckinFleetSummaryWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -184,6 +191,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
     });
   }
 
+  if (isClientCheckinFleetSummaryEnabled()) {
+    const clientCheckinFleetSummaryQueue = getQueue(CLIENT_CHECKIN_FLEET_SUMMARY_QUEUE);
+    const clientCheckinFleetSummaryCron = getClientCheckinFleetSummaryCron();
+
+    await clientCheckinFleetSummaryQueue.obliterate({ force: true });
+    await clientCheckinFleetSummaryQueue.add(
+      'client-checkin-fleet-summary-tick',
+      {},
+      {
+        repeat: { pattern: clientCheckinFleetSummaryCron },
+        jobId: 'client-checkin-fleet-summary-repeatable',
+      },
+    );
+
+    logger.info(
+      {
+        cron: clientCheckinFleetSummaryCron,
+        queue: CLIENT_CHECKIN_FLEET_SUMMARY_QUEUE,
+      },
+      'Registered client check-in fleet summary cron job',
+    );
+
+    clientCheckinFleetSummaryWorker = getWorker(CLIENT_CHECKIN_FLEET_SUMMARY_QUEUE, async () => {
+      await runClientCheckinFleetSummary(registry);
+    });
+  }
+
   const ghlPipelineSnapshotQueue = getQueue(GHL_PIPELINE_SNAPSHOT_QUEUE);
   const ghlPipelineSnapshotCron = getGhlPipelineSnapshotCron();
 
@@ -261,5 +295,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (qaFleetSummaryWorker) {
     await qaFleetSummaryWorker.close();
     qaFleetSummaryWorker = null;
+  }
+  if (clientCheckinFleetSummaryWorker) {
+    await clientCheckinFleetSummaryWorker.close();
+    clientCheckinFleetSummaryWorker = null;
   }
 }

@@ -22,6 +22,7 @@ import { assistableRefreshOAuthSkill } from './skills/assistable/refresh-oauth.j
 import { ghlSetCustomValueSkill } from './skills/ghl/set-custom-value.js';
 import { clientCheckinGetBriefSkill } from './skills/client-checkin/get-brief.js';
 import { clientCheckinGenerateBriefSkill } from './skills/client-checkin/generate-brief.js';
+import { clientCheckinListFleetRisksSkill } from './skills/client-checkin/list-fleet-risks.js';
 import { clientCheckinListBriefsSkill } from './skills/client-checkin/list-briefs.js';
 import { promptOpsGetReviewSkill } from './skills/prompt-ops/get-review.js';
 import { promptOpsListReviewsSkill } from './skills/prompt-ops/list-reviews.js';
@@ -61,6 +62,7 @@ registry.register(qaListFleetFailuresSkill);
 registry.register(clientCheckinGenerateBriefSkill);
 registry.register(clientCheckinListBriefsSkill);
 registry.register(clientCheckinGetBriefSkill);
+registry.register(clientCheckinListFleetRisksSkill);
 registry.register(promptOpsReviewRequestSkill);
 registry.register(promptOpsListReviewsSkill);
 registry.register(promptOpsGetReviewSkill);

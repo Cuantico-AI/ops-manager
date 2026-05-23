@@ -120,6 +120,7 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 - `/ops qa-show <call_id>` — persisted QA review for an Assistable call ID
 - Jobs run as `agent_id = qa-review` with audit trail (transcript content is not stored in audit logs)
 - `/ops client-checkin <account>` — pre-call client brief from stored GHL, Assistable, and n8n health signals
+- `/ops checkin-fleet-summary [hours]` — fleet-wide rollup of recent watch/at-risk client check-in briefs
 - `/ops checkin-history <account> [limit]` — recent persisted client check-in briefs for an account
 - `/ops checkin-show <brief_id>` — retrieve a persisted client check-in brief
 - Client check-ins run as `agent_id = client-checkin` and do not mutate external systems
@@ -132,7 +133,8 @@ Phase 5 adds LLM-powered agent roles. Slice 1 is **QA Review**:
 Requires LiteLLM + `ANTHROPIC_API_KEY`. Optional model overrides include
 `CLIENT_CHECKIN_MODEL` and `PROMPT_OPS_MODEL`; both default to `ops-claude-sonnet`.
 Set `QA_FLEET_SUMMARY_ENABLED=true` to post a daily fleet QA failure summary when
-recent failures exist.
+recent failures exist. Set `CLIENT_CHECKIN_FLEET_SUMMARY_ENABLED=true` to post a
+daily client check-in fleet attention summary when recent watch/at-risk briefs exist.
 Phase 5 scope: [docs/phases/PHASE-5.md](./docs/phases/PHASE-5.md).
 
 **Auto QA (slice 2):** point Assistable post-call webhooks at `POST /webhooks/assistable/post-call` and set `QA_AUTO_REVIEW_ENABLED=true`. Reviews are stored in `qa_reviews` and linked to job records; Slack alerts are **off by default** (set `QA_REVIEW_SLACK_ENABLED=true` only if you want them). See Phase 5 doc for env vars.
