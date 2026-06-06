@@ -236,6 +236,39 @@ describe('GhlClient', () => {
     });
   });
 
+  it('parses a custom value whose envelope has no value key (never-set field)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: vi.fn().mockResolvedValue(
+          JSON.stringify({
+            customValue: {
+              id: 'cv_1',
+              name: 'Robot Webhook',
+              fieldKey: 'custom_values.robot_webhook',
+              locationId: 'loc_123',
+              documentType: 'field',
+              parentId: 'parent_1',
+            },
+          }),
+        ),
+      }),
+    );
+
+    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
+    const customValue = await client.getCustomValue('loc_123', 'cv_1', 'pit_secret');
+
+    expect(customValue).toEqual({
+      id: 'cv_1',
+      name: 'Robot Webhook',
+      value: '',
+      locationId: 'loc_123',
+    });
+  });
+
   it('captures the raw body when a custom value response has an unexpected shape', async () => {
     const rawBody = JSON.stringify({ customValues: [{ id: 'cv_1', name: 'robot_webhook' }] });
     vi.stubGlobal(

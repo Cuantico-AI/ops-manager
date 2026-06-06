@@ -367,15 +367,18 @@ function parseCustomValue(value: unknown, fallbackLocationId: string): GhlCustom
   const record = value as Record<string, unknown>;
   const id = typeof record.id === 'string' ? record.id : null;
   const name = typeof record.name === 'string' ? record.name : null;
+  // A custom value that has never been set comes back from GHL with no `value`
+  // key at all. That is a valid, parseable field — treat an absent or empty
+  // value as the empty string rather than rejecting the whole envelope.
   const customValue =
     typeof record.value === 'string'
       ? record.value
       : typeof record.customValue === 'string'
         ? record.customValue
-        : null;
+        : '';
   const locationId =
     typeof record.locationId === 'string' ? record.locationId : fallbackLocationId;
-  if (!id || !name || customValue == null) {
+  if (!id || !name) {
     return null;
   }
 
