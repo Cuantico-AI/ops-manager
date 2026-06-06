@@ -203,13 +203,7 @@ export class GhlClient {
       throw await toGhlError('get custom value', res);
     }
 
-    const payload = (await res.json()) as { customValue?: unknown; value?: unknown };
-    const parsed = parseCustomValue(payload.customValue ?? payload.value ?? payload, locationId);
-    if (!parsed) {
-      throw new ExternalServiceError('GHL custom value response was invalid', 'GHL_API_ERROR');
-    }
-
-    return parsed;
+    return readCustomValueResponse(res, locationId, 'GET', url.pathname);
   }
 
   async updateCustomValue(
@@ -230,13 +224,7 @@ export class GhlClient {
       throw await toGhlError('update custom value', res);
     }
 
-    const payload = (await res.json()) as { customValue?: unknown; value?: unknown };
-    const parsed = parseCustomValue(payload.customValue ?? payload.value ?? payload, locationId);
-    if (!parsed) {
-      throw new ExternalServiceError('GHL custom value response was invalid', 'GHL_API_ERROR');
-    }
-
-    return parsed;
+    return readCustomValueResponse(res, locationId, 'PUT', url.pathname);
   }
 
   private async request(
@@ -392,6 +380,50 @@ function parseCustomValue(value: unknown, fallbackLocationId: string): GhlCustom
   }
 
   return { id, name, value: customValue, locationId };
+}
+
+const MAX_CAPTURED_BODY = 2048;
+
+function truncateBody(body: string): string {
+  const trimmed = body.trim();
+  return trimmed.length > MAX_CAPTURED_BODY
+    ? `${trimmed.slice(0, MAX_CAPTURED_BODY)}…[truncated]`
+    : trimmed;
+}
+
+/**
+ * Parse a 2xx customValues GET/PUT body into a GhlCustomValue. On an
+ * unexpected body shape, throws ExternalServiceError with the raw GHL
+ * response attached as `.detail` so the caller can persist it for diagnosis.
+ * Captures the raw text (never auth headers or the PIT token).
+ */
+async function readCustomValueResponse(
+  res: Response,
+  locationId: string,
+  method: string,
+  requestPath: string,
+): Promise<GhlCustomValue> {
+  const rawText = await res.text();
+  let payload: { customValue?: unknown; value?: unknown } | null = null;
+  try {
+    payload = JSON.parse(rawText) as { customValue?: unknown; value?: unknown };
+  } catch {
+    payload = null;
+  }
+
+  const parsed = payload
+    ? parseCustomValue(payload.customValue ?? payload.value ?? payload, locationId)
+    : null;
+  if (!parsed) {
+    throw new ExternalServiceError('GHL custom value response was invalid', 'GHL_API_ERROR', {
+      status: res.status,
+      body: truncateBody(rawText),
+      requestPath,
+      method,
+    });
+  }
+
+  return parsed;
 }
 
 async function readErrorMessage(res: Response): Promise<string | undefined> {

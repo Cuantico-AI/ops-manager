@@ -81,6 +81,7 @@ export const ghlSetCustomValueSkill: Skill<SetCustomValueInput, SetCustomValueOu
             name: err instanceof Error ? err.name : 'UnknownError',
             message: err instanceof Error ? err.message : String(err),
             code: (err as { code?: string })?.code,
+            detail: (err as { detail?: unknown })?.detail,
           },
         },
       });

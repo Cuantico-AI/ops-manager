@@ -1,12 +1,14 @@
 export class AppError extends Error {
   readonly code: string;
   readonly statusCode: number;
+  readonly detail?: unknown;
 
-  constructor(message: string, code: string, statusCode = 500) {
+  constructor(message: string, code: string, statusCode = 500, detail?: unknown) {
     super(message);
     this.name = 'AppError';
     this.code = code;
     this.statusCode = statusCode;
+    this.detail = detail;
   }
 }
 
@@ -25,8 +27,8 @@ export class NotFoundError extends AppError {
 }
 
 export class ExternalServiceError extends AppError {
-  constructor(message: string, code = 'EXTERNAL_SERVICE_ERROR') {
-    super(message, code, 502);
+  constructor(message: string, code = 'EXTERNAL_SERVICE_ERROR', detail?: unknown) {
+    super(message, code, 502, detail);
     this.name = 'ExternalServiceError';
   }
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GhlClient } from '../../../src/lib/ghl/client.js';
+import { ExternalServiceError } from '../../../src/lib/errors.js';
 
 describe('GhlClient', () => {
   afterEach(() => {
@@ -202,5 +203,91 @@ describe('GhlClient', () => {
         model: 'contact',
       },
     ]);
+  });
+
+  it('parses a custom value from the GET response envelope', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: vi.fn().mockResolvedValue(
+          JSON.stringify({
+            customValue: {
+              id: 'cv_1',
+              name: 'robot_webhook',
+              value: 'https://hooks.test/abc',
+              locationId: 'loc_123',
+            },
+          }),
+        ),
+      }),
+    );
+
+    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
+    const customValue = await client.getCustomValue('loc_123', 'cv_1', 'pit_secret');
+
+    expect(customValue).toEqual({
+      id: 'cv_1',
+      name: 'robot_webhook',
+      value: 'https://hooks.test/abc',
+      locationId: 'loc_123',
+    });
+  });
+
+  it('captures the raw body when a custom value response has an unexpected shape', async () => {
+    const rawBody = JSON.stringify({ customValues: [{ id: 'cv_1', name: 'robot_webhook' }] });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: vi.fn().mockResolvedValue(rawBody),
+      }),
+    );
+
+    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
+
+    const err = await client
+      .getCustomValue('loc_123', 'cv_1', 'pit_secret')
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ExternalServiceError);
+    expect((err as ExternalServiceError).code).toBe('GHL_API_ERROR');
+    expect((err as ExternalServiceError).detail).toEqual({
+      status: 200,
+      body: rawBody,
+      requestPath: '/locations/loc_123/customValues/cv_1',
+      method: 'GET',
+    });
+  });
+
+  it('captures non-JSON bodies on an invalid update response', async () => {
+    const rawBody = '<html>Bad Gateway</html>';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: vi.fn().mockResolvedValue(rawBody),
+      }),
+    );
+
+    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
+
+    const err = await client
+      .updateCustomValue('loc_123', 'cv_1', 'pit_secret', { name: 'robot_webhook', value: 'x' })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ExternalServiceError);
+    expect((err as ExternalServiceError).detail).toMatchObject({
+      status: 200,
+      body: rawBody,
+      requestPath: '/locations/loc_123/customValues/cv_1',
+      method: 'PUT',
+    });
   });
 });
