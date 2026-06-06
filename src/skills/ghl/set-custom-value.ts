@@ -49,7 +49,7 @@ export const ghlSetCustomValueSkill: Skill<SetCustomValueInput, SetCustomValueOu
       actor: ctx.agentId,
       action: 'ghl.set-custom-value',
       target: account.id,
-      mutated: true,
+      mutated: false,
       approvalId: approval.approvalId,
       input: {
         accountId: account.id,
@@ -59,7 +59,33 @@ export const ghlSetCustomValueSkill: Skill<SetCustomValueInput, SetCustomValueOu
       },
     });
 
-    const output = await mutateCustomValue(account, input, ghlClient);
+    let output: SetCustomValueOutput;
+    try {
+      output = await mutateCustomValue(account, input, ghlClient);
+    } catch (err) {
+      await ctx.audit.log({
+        jobId: ctx.jobId,
+        actor: ctx.agentId,
+        action: 'ghl.set-custom-value',
+        target: account.id,
+        mutated: false,
+        approvalId: approval.approvalId,
+        input: {
+          accountId: account.id,
+          accountName: account.name,
+          customValueId: input.customValueId,
+          value: input.value,
+        },
+        output: {
+          error: {
+            name: err instanceof Error ? err.name : 'UnknownError',
+            message: err instanceof Error ? err.message : String(err),
+            code: (err as { code?: string })?.code,
+          },
+        },
+      });
+      throw err;
+    }
 
     await ctx.audit.log({
       jobId: ctx.jobId,
