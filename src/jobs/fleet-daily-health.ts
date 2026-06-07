@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
@@ -28,10 +29,7 @@ import {
   type CheckN8nWorkflowHealthInput,
   type CheckN8nWorkflowHealthOutput,
 } from '../skills/n8n/check-workflow-health.js';
-import {
-  postMessageInputSchema,
-  type PostMessageOutput,
-} from '../skills/slack/post-message.js';
+import { postMessageInputSchema, type PostMessageOutput } from '../skills/slack/post-message.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import type { Skill, SkillContext } from '../skills/_types.js';
 
@@ -70,7 +68,7 @@ export async function runFleetDailyHealth(registry: SkillRegistry): Promise<void
 
   try {
     const checks = await runFleetHealthChecks(registry, ctx);
-    const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
+    const channel = resolveChannel([process.env.SLACK_ALERTS_CHANNEL], '#ops-manager-alerts');
     const postSkill = registry.get('slack.post-message');
 
     const parent = (await postSkill.execute(

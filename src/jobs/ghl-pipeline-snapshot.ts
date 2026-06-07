@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import { listAccountsForGhlTokenCheck } from '../lib/accounts/ghl-token-health.js';
 import { fetchGhlAccountSnapshot } from '../lib/ghl/fetch-account-snapshot.js';
 import { auditLogger } from '../lib/audit/log.js';
@@ -19,7 +20,12 @@ export function getGhlPipelineSnapshotCron(): string {
 }
 
 export function formatGhlPipelineFleetSummary(
-  rows: Array<{ accountName: string; pipelineCount: number; totalOpportunities: number; open: number }>,
+  rows: Array<{
+    accountName: string;
+    pipelineCount: number;
+    totalOpportunities: number;
+    open: number;
+  }>,
   errors: Array<{ accountName: string; message: string }>,
 ): string {
   const sorted = [...rows].sort((left, right) => right.open - left.open);
@@ -32,10 +38,12 @@ export function formatGhlPipelineFleetSummary(
     `Total opportunities: ${totalOpportunities}`,
     `Total open: ${totalOpen}`,
     sorted.length ? '' : undefined,
-    ...sorted.slice(0, 15).map(
-      (row) =>
-        `• ${row.accountName} — ${row.pipelineCount} pipelines, ${row.totalOpportunities} opps (${row.open} open)`,
-    ),
+    ...sorted
+      .slice(0, 15)
+      .map(
+        (row) =>
+          `• ${row.accountName} — ${row.pipelineCount} pipelines, ${row.totalOpportunities} opps (${row.open} open)`,
+      ),
     sorted.length > 15 ? `…and ${sorted.length - 15} more accounts` : undefined,
     errors.length ? '' : undefined,
     errors.length ? `Errors: ${errors.length}` : undefined,
@@ -117,7 +125,7 @@ export async function runGhlPipelineSnapshot(registry: SkillRegistry): Promise<v
       Array.from({ length: Math.min(DEFAULT_CONCURRENCY, accounts.length) }, () => worker()),
     );
 
-    const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
+    const channel = resolveChannel([process.env.SLACK_ALERTS_CHANNEL], '#ops-manager-alerts');
     const postSkill = registry.get('slack.post-message');
     const postInput = postMessageInputSchema.parse({
       channel,
@@ -135,7 +143,10 @@ export async function runGhlPipelineSnapshot(registry: SkillRegistry): Promise<v
       jobId,
     ]);
 
-    log.info({ accountsChecked: rows.length, errors: errors.length }, 'GHL pipeline snapshot succeeded');
+    log.info(
+      { accountsChecked: rows.length, errors: errors.length },
+      'GHL pipeline snapshot succeeded',
+    );
   } catch (err) {
     const errorPayload = {
       message: err instanceof Error ? err.message : String(err),

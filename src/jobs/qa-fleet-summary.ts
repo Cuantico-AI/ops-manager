@@ -1,20 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
 import { formatQaFleetSummaryOutput } from '../skills/qa/list-fleet-failures.js';
-import {
-  postMessageInputSchema,
-  type PostMessageOutput,
-} from '../skills/slack/post-message.js';
+import { postMessageInputSchema, type PostMessageOutput } from '../skills/slack/post-message.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import type { Skill, SkillContext } from '../skills/_types.js';
-import type {
-  FleetQaSummary,
-  FetchFleetQaSummaryInput,
-} from '../lib/qa/fleet-summary.js';
+import type { FleetQaSummary, FetchFleetQaSummaryInput } from '../lib/qa/fleet-summary.js';
 
 export const QA_FLEET_SUMMARY_QUEUE = 'qa-fleet-summary';
 
@@ -71,11 +66,14 @@ export async function runQaFleetSummary(registry: SkillRegistry): Promise<void> 
     let slackTs: string | undefined;
 
     if (output.failedReviews > 0) {
-      const channel =
-        process.env.QA_FLEET_SUMMARY_CHANNEL ??
-        process.env.QA_REVIEW_SLACK_CHANNEL ??
-        process.env.SLACK_ALERTS_CHANNEL ??
-        '#ops-manager-alerts';
+      const channel = resolveChannel(
+        [
+          process.env.QA_FLEET_SUMMARY_CHANNEL,
+          process.env.QA_REVIEW_SLACK_CHANNEL,
+          process.env.SLACK_ALERTS_CHANNEL,
+        ],
+        '#ops-manager-alerts',
+      );
       const postSkill = registry.get('slack.post-message');
       const post = (await postSkill.execute(
         postMessageInputSchema.parse({

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
@@ -26,7 +27,7 @@ export async function runHeartbeat(registry: SkillRegistry): Promise<void> {
     [jobId, 'system', 'scheduled', JSON.stringify({ name: 'heartbeat' }), 'running', null],
   );
 
-  const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
+  const channel = resolveChannel([process.env.SLACK_ALERTS_CHANNEL], '#ops-manager-alerts');
   const text = `ops-manager alive — ${new Date().toISOString()}`;
 
   const ctx: SkillContext = {
@@ -42,10 +43,11 @@ export async function runHeartbeat(registry: SkillRegistry): Promise<void> {
     const input = postMessageInputSchema.parse({ channel, text });
     const output = await skill.execute(input, ctx);
 
-    await query(
-      `UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`,
-      ['succeeded', JSON.stringify(output), jobId],
-    );
+    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
+      'succeeded',
+      JSON.stringify(output),
+      jobId,
+    ]);
 
     log.info({ output }, 'Heartbeat job succeeded');
   } catch (err) {
@@ -54,10 +56,11 @@ export async function runHeartbeat(registry: SkillRegistry): Promise<void> {
       name: err instanceof Error ? err.name : 'Error',
     };
 
-    await query(
-      `UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`,
-      ['failed', JSON.stringify(errorPayload), jobId],
-    );
+    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
+      'failed',
+      JSON.stringify(errorPayload),
+      jobId,
+    ]);
 
     log.error({ err }, 'Heartbeat job failed');
     throw err;
