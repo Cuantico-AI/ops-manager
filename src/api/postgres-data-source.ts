@@ -376,8 +376,7 @@ export class PostgresReadApiDataSource implements ReadApiDataSource {
       `SELECT al.id, al.actor, al.action, al.target, al.mutated, al.output, al.timestamp,
               acc.name AS account_name
        FROM audit_log al
-       LEFT JOIN accounts acc
-         ON al.target ~ '^[0-9a-fA-F-]{36}$' AND acc.id = al.target::uuid
+       LEFT JOIN accounts acc ON acc.id::text = al.target
        ORDER BY al.id DESC
        LIMIT 100`,
     );
