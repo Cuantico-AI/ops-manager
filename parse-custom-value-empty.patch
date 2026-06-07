@@ -1,0 +1,95 @@
+From 3f05b677466cc15dac9b02bfd4aedc82b0fc95e4 Mon Sep 17 00:00:00 2001
+From: Jonathan Ferrell <jonathan@highlevelautomations.com>
+Date: Sat, 6 Jun 2026 00:26:11 -0500
+Subject: [PATCH] fix(ghl): parse custom values that have no value set
+
+GHL returns a customValue envelope with no `value` key for a field that
+has never been set (e.g. {"id","name","fieldKey","locationId",...}).
+parseCustomValue required a non-null string value, so it returned null
+and readCustomValueResponse threw ExternalServiceError("GHL custom value
+response was invalid"). This broke /ops set-custom-value on the GET
+pre-read leg (mutateCustomValue reads current state before the PUT), so
+the PUT never fired for any empty field.
+
+Treat an absent or empty value as '' while keeping the id and name
+string requirements. This unblocks the whole set flow for never-set
+fields.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ src/lib/ghl/client.ts        |  7 +++++--
+ tests/lib/ghl/client.test.ts | 33 +++++++++++++++++++++++++++++++++
+ 2 files changed, 38 insertions(+), 2 deletions(-)
+
+diff --git a/src/lib/ghl/client.ts b/src/lib/ghl/client.ts
+index 8d4bfb0..de65e6a 100644
+--- a/src/lib/ghl/client.ts
++++ b/src/lib/ghl/client.ts
+@@ -367,15 +367,18 @@ function parseCustomValue(value: unknown, fallbackLocationId: string): GhlCustom
+   const record = value as Record<string, unknown>;
+   const id = typeof record.id === 'string' ? record.id : null;
+   const name = typeof record.name === 'string' ? record.name : null;
++  // A custom value that has never been set comes back from GHL with no `value`
++  // key at all. That is a valid, parseable field — treat an absent or empty
++  // value as the empty string rather than rejecting the whole envelope.
+   const customValue =
+     typeof record.value === 'string'
+       ? record.value
+       : typeof record.customValue === 'string'
+         ? record.customValue
+-        : null;
++        : '';
+   const locationId =
+     typeof record.locationId === 'string' ? record.locationId : fallbackLocationId;
+-  if (!id || !name || customValue == null) {
++  if (!id || !name) {
+     return null;
+   }
+ 
+diff --git a/tests/lib/ghl/client.test.ts b/tests/lib/ghl/client.test.ts
+index c743c45..34b4ef4 100644
+--- a/tests/lib/ghl/client.test.ts
++++ b/tests/lib/ghl/client.test.ts
+@@ -236,6 +236,39 @@ describe('GhlClient', () => {
+     });
+   });
+ 
++  it('parses a custom value whose envelope has no value key (never-set field)', async () => {
++    vi.stubGlobal(
++      'fetch',
++      vi.fn().mockResolvedValue({
++        ok: true,
++        status: 200,
++        statusText: 'OK',
++        text: vi.fn().mockResolvedValue(
++          JSON.stringify({
++            customValue: {
++              id: 'cv_1',
++              name: 'Robot Webhook',
++              fieldKey: 'custom_values.robot_webhook',
++              locationId: 'loc_123',
++              documentType: 'field',
++              parentId: 'parent_1',
++            },
++          }),
++        ),
++      }),
++    );
++
++    const client = new GhlClient({ baseUrl: 'https://services.test', timeoutMs: 100 });
++    const customValue = await client.getCustomValue('loc_123', 'cv_1', 'pit_secret');
++
++    expect(customValue).toEqual({
++      id: 'cv_1',
++      name: 'Robot Webhook',
++      value: '',
++      locationId: 'loc_123',
++    });
++  });
++
+   it('captures the raw body when a custom value response has an unexpected shape', async () => {
+     const rawBody = JSON.stringify({ customValues: [{ id: 'cv_1', name: 'robot_webhook' }] });
+     vi.stubGlobal(
+-- 
+2.43.0
+

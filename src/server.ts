@@ -39,10 +39,16 @@ import { slackPostMessageSkill } from './skills/slack/post-message.js';
 import { SkillRegistry } from './skills/_registry.js';
 import { startBoltApp, stopBoltApp } from './slack/bot.js';
 import { registerAssistablePostCallWebhook } from './webhooks/assistable-post-call.js';
+import { registerReadApi } from './api/index.js';
 
 const startTime = Date.now();
 const version = process.env.APP_VERSION ?? '0.1.0';
 const port = Number(process.env.PORT ?? 3000);
+
+// API-only mode boots just the HTTP read API (for dashboard dev) and skips
+// migrations, the Postgres pool warmup, Slack Socket Mode, and job workers — so
+// the mock-data dashboard runs with zero infra.
+const apiOnly = (process.env.DASHBOARD_API_ONLY ?? '').toLowerCase() === 'true';
 
 const registry = new SkillRegistry();
 registry.register(slackPostMessageSkill);
@@ -78,8 +84,14 @@ registry.register(opsFleetDigestSkill);
 let fastify: ReturnType<typeof Fastify> | null = null;
 
 async function main(): Promise<void> {
-  await runMigrations();
-  getPool();
+  if (apiOnly) {
+    logger.warn(
+      'DASHBOARD_API_ONLY=true — booting HTTP read API only (no migrations, Slack, or job workers)',
+    );
+  } else {
+    await runMigrations();
+    getPool();
+  }
 
   fastify = Fastify({ logger: false });
   fastify.get('/health', async () => ({
@@ -89,9 +101,14 @@ async function main(): Promise<void> {
   }));
 
   registerAssistablePostCallWebhook(fastify);
+  registerReadApi(fastify);
 
   await fastify.listen({ port, host: '0.0.0.0' });
-  logger.info({ port, version }, 'HTTP server listening');
+  logger.info({ port, version, apiOnly }, 'HTTP server listening');
+
+  if (apiOnly) {
+    return;
+  }
 
   await startBoltApp(registry);
   logger.info('Slack Bolt app started (Socket Mode)');
