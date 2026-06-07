@@ -110,6 +110,11 @@ export const qaFlagSchema = z.object({
   id: z.string(),
   acct: z.string(),
   assistantId: z.string().nullable().optional(),
+  // Reference to the source call/conversation in Assistable (qa_reviews.call_id).
+  // Transcripts are intentionally not persisted (privacy); this ID lets the
+  // human-review queue deep-link back to the source without storing it. Nullable:
+  // some reviews have no call id (e.g. SMS/manual).
+  callId: z.string().nullable().optional(),
   channel: qaChannelSchema,
   severity: qaSeveritySchema,
   confidence: z.number().int().min(0).max(100),

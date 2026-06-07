@@ -230,6 +230,11 @@ export function QAView({ flags, health, onResolve, onOpenAccount, accountsByName
                     <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Icon name="cpu" size={11} /> Confirm / dismiss feeds back into the QA tuning set · flagged{' '}
                       {fmtAgo(f.when)}
+                      {f.callId && (
+                        <span style={{ fontFamily: 'var(--mono)' }} title="Assistable call reference (source not stored)">
+                          · call {f.callId}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

@@ -239,10 +239,11 @@ export class PostgresReadApiDataSource implements ReadApiDataSource {
       account_name: string;
       score: number | string;
       call_type: string;
+      call_id: string | null;
       findings: unknown;
       reviewed_at: Date | string;
     }>(
-      `SELECT qr.id, a.name AS account_name, qr.score, qr.call_type, qr.findings, qr.reviewed_at
+      `SELECT qr.id, a.name AS account_name, qr.score, qr.call_type, qr.call_id, qr.findings, qr.reviewed_at
        FROM qa_reviews qr
        JOIN accounts a ON a.id = qr.account_id
        WHERE qr.pass = FALSE
@@ -261,6 +262,7 @@ export class PostgresReadApiDataSource implements ReadApiDataSource {
         flags.push({
           id: `${row.id}:${index}`,
           acct: row.account_name,
+          callId: row.call_id,
           channel: row.call_type === 'unknown' ? 'sms' : 'voice',
           severity: mapFindingSeverity(finding.severity),
           confidence,
