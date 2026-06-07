@@ -1,0 +1,12 @@
+# Local dev override — auto-merged by `docker compose`.
+# Exposes postgres and redis to the host so the documented host workflow
+# (`npm run migrate`, `npm run dev`, `npm run dev:dashboard` against localhost)
+# can reach them. The base compose file keeps these ports internal-only for
+# the in-container `app` service, which talks over the compose network.
+services:
+  postgres:
+    ports:
+      - '5432:5432'
+  redis:
+    ports:
+      - '6379:6379'
