@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import type { Worker } from 'bullmq';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
-import {
-  type AssistablePostCallPayload,
-  resolveCallType,
-} from '../lib/qa/assistable-post-call.js';
+import { type AssistablePostCallPayload, resolveCallType } from '../lib/qa/assistable-post-call.js';
 import { resolveAccountByLocationId } from '../lib/qa/resolve-account-from-location.js';
 import {
   getQaAutoReviewModel,
@@ -170,10 +168,10 @@ export async function runQaAutoReview(
         escalated,
       })
     ) {
-      const channel =
-        process.env.QA_REVIEW_SLACK_CHANNEL ??
-        process.env.SLACK_ALERTS_CHANNEL ??
-        '#ops-manager-alerts';
+      const channel = resolveChannel(
+        [process.env.QA_REVIEW_SLACK_CHANNEL, process.env.SLACK_ALERTS_CHANNEL],
+        '#ops-manager-alerts',
+      );
       const skill = registry.get('slack.post-message');
       await skill.execute(
         postMessageInputSchema.parse({

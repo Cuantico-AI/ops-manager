@@ -1,9 +1,10 @@
 import { getSlackClient } from '../../slack/client.js';
+import { resolveChannel } from '../slack/channel.js';
 import type { ApprovalRecord } from './store.js';
 import { getApprovalExpiryHours } from './store.js';
 
 export function getApprovalsChannel(): string {
-  return process.env.SLACK_APPROVALS_CHANNEL ?? '#ops-manager-approvals';
+  return resolveChannel([process.env.SLACK_APPROVALS_CHANNEL], '#ops-manager-approvals');
 }
 
 export function formatApprovalRequestMessage(approval: ApprovalRecord): string {

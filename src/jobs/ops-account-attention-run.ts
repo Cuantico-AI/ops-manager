@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
@@ -134,10 +135,10 @@ export async function runOpsAccountAttentionRun(
     let slackTs: string | undefined;
 
     if (output.totalCandidates > 0) {
-      const channel =
-        process.env.OPS_ACCOUNT_ATTENTION_RUN_CHANNEL ??
-        process.env.SLACK_ALERTS_CHANNEL ??
-        '#ops-manager-alerts';
+      const channel = resolveChannel(
+        [process.env.OPS_ACCOUNT_ATTENTION_RUN_CHANNEL, process.env.SLACK_ALERTS_CHANNEL],
+        '#ops-manager-alerts',
+      );
       const postSkill = registry.get('slack.post-message') as Skill<
         PostMessageInput,
         PostMessageOutput

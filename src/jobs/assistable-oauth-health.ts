@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
 import { query } from '../lib/db/client.js';
@@ -57,7 +58,7 @@ export async function runAssistableOAuthHealth(registry: SkillRegistry): Promise
     const output = await checkSkill.execute(checkInput, ctx);
 
     if (shouldPostIndividualHealthAlert()) {
-      const channel = process.env.SLACK_ALERTS_CHANNEL ?? '#ops-manager-alerts';
+      const channel = resolveChannel([process.env.SLACK_ALERTS_CHANNEL], '#ops-manager-alerts');
       const postSkill = registry.get('slack.post-message');
       const postInput = postMessageInputSchema.parse({
         channel,
