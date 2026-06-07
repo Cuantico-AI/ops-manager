@@ -256,6 +256,12 @@ export function QAView({ flags, health, onResolve, onOpenAccount, accountsByName
           </div>
         </div>
         <div className="zone-body">
+          {sortedHealth.length === 0 && (
+            <div className="empty">
+              <Icon name="cpu" size={30} />
+              <div>No assistants have been QA-reviewed yet.</div>
+            </div>
+          )}
           {sortedHealth.map((q) => {
             const a = accountsByName(q.acct);
             return (

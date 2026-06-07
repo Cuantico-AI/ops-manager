@@ -78,6 +78,16 @@ export function AuditView({ audit, accountsByName }: AuditViewProps) {
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7}>
+                  <div className="empty" style={{ padding: '28px' }}>
+                    <Icon name="history" size={28} />
+                    <div>{audit.length === 0 ? 'No audit entries yet.' : 'No entries match these filters.'}</div>
+                  </div>
+                </td>
+              </tr>
+            )}
             {rows.map((e) => {
               const a = accountsByName(e.acct);
               return (
