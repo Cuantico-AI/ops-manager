@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getAccountPitToken } from '../../lib/accounts/ghl-credentials.js';
 import { resolveAccountInput } from '../../lib/accounts/resolve-account-input.js';
+import { wrapMutation } from '../../lib/audit/wrap-mutation.js';
 import { ValidationError } from '../../lib/errors.js';
 import { ghlClient, type GhlClient, type GhlCustomValue } from '../../lib/ghl/client.js';
 import type { Skill, SkillContext } from '../_types.js';
@@ -44,12 +45,12 @@ export const ghlSetCustomValueSkill: Skill<SetCustomValueInput, SetCustomValueOu
       proposedAction: input,
     });
 
-    await ctx.audit.log({
+    return wrapMutation(() => mutateCustomValue(account, input, ghlClient), {
+      audit: ctx.audit,
       jobId: ctx.jobId,
       actor: ctx.agentId,
       action: 'ghl.set-custom-value',
       target: account.id,
-      mutated: false,
       approvalId: approval.approvalId,
       input: {
         accountId: account.id,
@@ -57,52 +58,12 @@ export const ghlSetCustomValueSkill: Skill<SetCustomValueInput, SetCustomValueOu
         customValueId: input.customValueId,
         value: input.value,
       },
+      output: (result) => ({
+        customValueId: result.customValueId,
+        previousValue: result.previousValue,
+        value: result.customValue.value,
+      }),
     });
-
-    let output: SetCustomValueOutput;
-    try {
-      output = await mutateCustomValue(account, input, ghlClient);
-    } catch (err) {
-      await ctx.audit.log({
-        jobId: ctx.jobId,
-        actor: ctx.agentId,
-        action: 'ghl.set-custom-value',
-        target: account.id,
-        mutated: false,
-        approvalId: approval.approvalId,
-        input: {
-          accountId: account.id,
-          accountName: account.name,
-          customValueId: input.customValueId,
-          value: input.value,
-        },
-        output: {
-          error: {
-            name: err instanceof Error ? err.name : 'UnknownError',
-            message: err instanceof Error ? err.message : String(err),
-            code: (err as { code?: string })?.code,
-            detail: (err as { detail?: unknown })?.detail,
-          },
-        },
-      });
-      throw err;
-    }
-
-    await ctx.audit.log({
-      jobId: ctx.jobId,
-      actor: ctx.agentId,
-      action: 'ghl.set-custom-value',
-      target: account.id,
-      mutated: true,
-      approvalId: approval.approvalId,
-      output: {
-        customValueId: output.customValueId,
-        previousValue: output.previousValue,
-        value: output.customValue.value,
-      },
-    });
-
-    return output;
   },
 };
 

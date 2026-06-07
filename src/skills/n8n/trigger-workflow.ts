@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { listAccountsForN8nWorkflowCheck } from '../../lib/accounts/n8n-workflow-health.js';
 import { resolveAccountInput } from '../../lib/accounts/resolve-account-input.js';
+import { wrapMutation } from '../../lib/audit/wrap-mutation.js';
 import { ValidationError } from '../../lib/errors.js';
 import { n8nClient, type N8nClient } from '../../lib/n8n/client.js';
 import { resolveTrackedWorkflowId } from '../../lib/n8n/resolve-workflow-id.js';
@@ -50,45 +51,37 @@ export const n8nTriggerWorkflowSkill: Skill<TriggerWorkflowInput, TriggerWorkflo
       proposedAction: input,
     });
 
-    await ctx.audit.log({
-      jobId: ctx.jobId,
-      actor: ctx.agentId,
-      action: 'n8n.trigger-workflow',
-      target: account.id,
-      mutated: true,
-      approvalId: approval.approvalId,
-      input: {
-        accountId: account.id,
-        accountName: account.name,
-        workflowId,
-        inputData: input.inputData,
+    return wrapMutation(
+      async (): Promise<TriggerWorkflowOutput> => {
+        const result = await triggerWorkflow(workflowId, input.inputData, n8nClient);
+        return {
+          accountId: account.id,
+          accountName: account.name,
+          workflowId: result.workflowId,
+          workflowName: result.workflowName,
+          executionId: result.executionId,
+          triggeredAt: new Date().toISOString(),
+        };
       },
-    });
-
-    const result = await triggerWorkflow(workflowId, input.inputData, n8nClient);
-    const output: TriggerWorkflowOutput = {
-      accountId: account.id,
-      accountName: account.name,
-      workflowId: result.workflowId,
-      workflowName: result.workflowName,
-      executionId: result.executionId,
-      triggeredAt: new Date().toISOString(),
-    };
-
-    await ctx.audit.log({
-      jobId: ctx.jobId,
-      actor: ctx.agentId,
-      action: 'n8n.trigger-workflow',
-      target: account.id,
-      mutated: true,
-      approvalId: approval.approvalId,
-      output: {
-        workflowId: output.workflowId,
-        executionId: output.executionId,
+      {
+        audit: ctx.audit,
+        jobId: ctx.jobId,
+        actor: ctx.agentId,
+        action: 'n8n.trigger-workflow',
+        target: account.id,
+        approvalId: approval.approvalId,
+        input: {
+          accountId: account.id,
+          accountName: account.name,
+          workflowId,
+          inputData: input.inputData,
+        },
+        output: (out) => ({
+          workflowId: out.workflowId,
+          executionId: out.executionId,
+        }),
       },
-    });
-
-    return output;
+    );
   },
 };
 

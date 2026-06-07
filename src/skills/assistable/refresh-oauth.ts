@@ -7,6 +7,7 @@ import {
   type AssistableOAuthCheckResult,
 } from '../../lib/accounts/assistable-oauth-health.js';
 import { resolveAccountInput } from '../../lib/accounts/resolve-account-input.js';
+import { wrapMutation } from '../../lib/audit/wrap-mutation.js';
 import { query } from '../../lib/db/client.js';
 import { ExternalServiceError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import {
@@ -169,34 +170,42 @@ export const assistableRefreshOAuthSkill: Skill<
       },
     });
 
-    const output = await refreshViaApi(
+    return wrapMutation(
+      () =>
+        refreshViaApi(
+          {
+            accountId: account.id,
+            accountName: account.name,
+            assistableLocationId: resolved.locationId,
+            locationSource: resolved.source,
+            previousStatus,
+            checkedAt,
+          },
+          assistableClient,
+        ),
       {
-        accountId: account.id,
-        accountName: account.name,
-        assistableLocationId: resolved.locationId,
-        locationSource: resolved.source,
-        previousStatus,
-        checkedAt,
+        audit: ctx.audit,
+        jobId: ctx.jobId,
+        actor: ctx.agentId,
+        action: 'assistable.refresh-oauth',
+        target: account.id,
+        approvalId: approval.approvalId,
+        input: {
+          accountId: account.id,
+          accountName: account.name,
+          assistableLocationId: resolved.locationId,
+          locationSource: resolved.source,
+          previousStatus,
+          mode: 'api',
+        },
+        output: (out) => ({
+          mode: out.mode,
+          previousStatus: out.previousStatus,
+          currentStatus: out.currentStatus,
+          refreshMessage: out.refreshMessage,
+        }),
       },
-      assistableClient,
     );
-
-    await ctx.audit.log({
-      jobId: ctx.jobId,
-      actor: ctx.agentId,
-      action: 'assistable.refresh-oauth',
-      target: account.id,
-      mutated: true,
-      approvalId: approval.approvalId,
-      output: {
-        mode: output.mode,
-        previousStatus: output.previousStatus,
-        currentStatus: output.currentStatus,
-        refreshMessage: output.refreshMessage,
-      },
-    });
-
-    return output;
   },
 };
 
