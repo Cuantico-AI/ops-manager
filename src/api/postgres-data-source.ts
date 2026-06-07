@@ -57,12 +57,19 @@ interface AccountRow {
 
 /**
  * Postgres-backed read API. Reads real data where the schema supports it
- * (accounts, approvals, audit_log, qa_reviews, requests). Several dashboard
- * fields are presentation-only and not yet first-class columns (PIT
- * days-to-expiry, Assistable minute cap, per-day activity sparkline); those are
- * derived/synthesized here and called out in comments — they are the
- * "account UI fields" gap from the June review and convert to real columns
- * later without changing the contract.
+ * (accounts, approvals, audit_log, qa_reviews, requests).
+ *
+ * Time-series fields are now backed by real rollups: the per-day activity
+ * sparkline and the QA daily trend both read from `account_daily_metrics`,
+ * materialized by the deterministic `account-rollups` job.
+ *
+ * Two account fields remain honestly gated on source data that is not captured
+ * yet, and are returned as null (not faked):
+ *   - pitDays:   needs a stored PIT issue/expiry timestamp (token-health check
+ *                records status only).
+ *   - minuteCap: needs Assistable minute-usage to be fetched/stored.
+ * Both convert to real values once the upstream data lands, without a contract
+ * change (the fields are already nullable).
  *
  * Audit note: `audit_log` is immutable via Postgres role grants (ops_app has
  * INSERT/SELECT only), which is the architecture doc's mandated guarantee. It is
@@ -293,6 +300,9 @@ export class PostgresReadApiDataSource implements ReadApiDataSource {
        ORDER BY avg_score ASC NULLS FIRST`,
     );
 
+    // Real per-day QA score series from the account-rollups job, keyed by name.
+    const trendByAccount = await loadQaTrend();
+
     const health: QaHealth[] = rows.map((row) => {
       const score = row.avg_score === null ? 100 : clamp(Math.round(Number(row.avg_score)), 0, 100);
       return {
@@ -301,9 +311,9 @@ export class PostgresReadApiDataSource implements ReadApiDataSource {
         slope: 0,
         flagsWk: Number(row.flags_wk),
         status: qaStatusFor(score),
-        // No per-day series is stored yet; render a flat trend at the average
-        // until a daily QA rollup table exists.
-        trend: Array.from({ length: 10 }, () => score),
+        // Real daily averages (chronological). Empty/short until enough days of
+        // reviews exist — the dashboard sparkline handles a sparse series.
+        trend: trendByAccount.get(row.account_name) ?? [],
         lastFlag: row.last_flag_at ? fmtAgo(minsAgo(row.last_flag_at)) : '—',
         reviewed: Number(row.reviewed),
       };
@@ -420,7 +430,10 @@ export class PostgresReadApiDataSource implements ReadApiDataSource {
       params,
     );
 
-    return rows.map((row, index) => deriveAccountView(row, index));
+    const sparkByAccount = await loadActivitySpark(rows.map((row) => row.id));
+    return rows.map((row, index) =>
+      deriveAccountView(row, index, sparkByAccount.get(row.id) ?? zeroSpark()),
+    );
   }
 
   private async writeAudit(input: {
@@ -511,7 +524,7 @@ function parseFindings(value: unknown): ParsedFinding[] {
     }));
 }
 
-function deriveAccountView(row: AccountRow, index: number): Account {
+function deriveAccountView(row: AccountRow, index: number, spark: number[]): Account {
   const ghlBad = isGhlTokenBad(row.ghl_token_status);
   const assistableConnected = isAssistableConnected(row.assistable_oauth_status);
   const n8nStatus = row.n8n_workflow_status;
@@ -545,9 +558,10 @@ function deriveAccountView(row: AccountRow, index: number): Account {
     initials: deriveInitials(row.name),
     tint: FLEET_TINTS[index % FLEET_TINTS.length],
     pit,
-    // PIT days-to-expiry is not tracked as a column yet (gap): valid -> nominal
-    // horizon, bad -> expired sentinel.
-    pitDays: pit === 'valid' ? 60 : -1,
+    // Honest gap: days-to-expiry needs a stored PIT issue/expiry timestamp the
+    // token-health check does not capture. null = not tracked (pit status above
+    // is real).
+    pitDays: null,
     assistable: assistableConnected ? 'connected' : 'disconnected',
     assistantId: row.assistable_subaccount_id,
     n8n: n8nIds.length || n8nStatus === 'healthy' ? 'active' : 'none',
@@ -556,11 +570,68 @@ function deriveAccountView(row: AccountRow, index: number): Account {
     lastMin,
     lastActivity: fmtAgo(lastMin),
     issue: deriveIssue(status, row),
-    // Per-day activity series is not stored yet (gap): flat placeholder.
-    spark: Array.from({ length: 7 }, () => (status === 'down' ? 1 : 8)),
-    // Assistable minute-cap usage is not stored yet (gap).
-    minuteCap: 0,
+    // Real per-day activity (jobs/day) from the account-rollups job.
+    spark,
+    // Honest gap: Assistable minute-cap usage is not fetched/stored yet.
+    minuteCap: null,
   };
+}
+
+const SPARK_DAYS = 7;
+const QA_TREND_DAYS = 14;
+
+function zeroSpark(): number[] {
+  return new Array(SPARK_DAYS).fill(0) as number[];
+}
+
+/**
+ * Per-account activity sparkline (last {@link SPARK_DAYS} days) from the
+ * account-rollups table. Returns a contiguous, zero-filled series ordered
+ * oldest -> today, so a day with no jobs reads as 0 rather than a gap.
+ */
+async function loadActivitySpark(accountIds: string[]): Promise<Map<string, number[]>> {
+  const map = new Map<string, number[]>();
+  if (accountIds.length === 0) return map;
+  for (const id of accountIds) map.set(id, zeroSpark());
+
+  const { rows } = await query<{ account_id: string; offset: number; activity_count: number | string }>(
+    `SELECT account_id, (CURRENT_DATE - day)::int AS offset, activity_count
+     FROM account_daily_metrics
+     WHERE account_id = ANY($1::uuid[]) AND day >= (CURRENT_DATE - ($2::int - 1))`,
+    [accountIds, SPARK_DAYS],
+  );
+
+  for (const row of rows) {
+    const arr = map.get(row.account_id);
+    if (!arr) continue;
+    const idx = SPARK_DAYS - 1 - Number(row.offset); // offset 0 = today = last slot
+    if (idx >= 0 && idx < SPARK_DAYS) arr[idx] = Number(row.activity_count);
+  }
+  return map;
+}
+
+/**
+ * Per-account QA daily-score trend (last {@link QA_TREND_DAYS} days) from the
+ * account-rollups table, keyed by account name to match the QA health rows.
+ * Only days that actually had reviews contribute a point (chronological).
+ */
+async function loadQaTrend(): Promise<Map<string, number[]>> {
+  const { rows } = await query<{ account_name: string; qa_avg_score: number | string }>(
+    `SELECT a.name AS account_name, m.qa_avg_score
+     FROM account_daily_metrics m
+     JOIN accounts a ON a.id = m.account_id
+     WHERE m.qa_avg_score IS NOT NULL AND m.day >= (CURRENT_DATE - ($1::int - 1))
+     ORDER BY m.day ASC`,
+    [QA_TREND_DAYS],
+  );
+
+  const map = new Map<string, number[]>();
+  for (const row of rows) {
+    const arr = map.get(row.account_name) ?? [];
+    arr.push(Number(row.qa_avg_score));
+    map.set(row.account_name, arr);
+  }
+  return map;
 }
 
 const VERT_LABEL: Record<Account['vert'], string> = {

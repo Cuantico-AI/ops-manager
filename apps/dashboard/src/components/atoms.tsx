@@ -23,7 +23,12 @@ export function VTag({ vert, label }: { vert: Account['vert']; label: string }) 
 /** GHL PIT, Assistable, and n8n mini status badges for a fleet row. */
 export function IntegrationBadges({ acct }: { acct: Account }) {
   const pit = acct.pit === 'expired' ? 'err' : acct.pit === 'expiring' ? 'warn' : 'ok';
-  const pitTxt = acct.pit === 'expired' ? 'expired' : acct.pit === 'expiring' ? `${acct.pitDays}d` : 'PIT';
+  const pitTxt =
+    acct.pit === 'expired'
+      ? 'expired'
+      : acct.pit === 'expiring' && acct.pitDays !== null
+        ? `${acct.pitDays}d`
+        : 'PIT';
   const asst = acct.assistable === 'disconnected' ? 'err' : 'ok';
   const n8 = acct.n8n === 'none' ? 'off' : acct.n8nErr ? 'warn' : 'ok';
   return (

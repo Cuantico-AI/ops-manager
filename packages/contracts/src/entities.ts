@@ -33,7 +33,10 @@ export const accountSchema = z.object({
   initials: z.string(),
   tint: z.tuple([z.string(), z.string()]),
   pit: pitStatusSchema,
-  pitDays: z.number(),
+  // Nullable: days-to-expiry requires a stored PIT issue/expiry timestamp, which
+  // the GHL token-health check does not yet capture. null = not tracked (the
+  // `pit` status itself is real). Mock mode still supplies a number.
+  pitDays: z.number().nullable(),
   assistable: assistableStatusSchema,
   assistantId: z.string().nullable(),
   n8n: n8nStatusSchema,
@@ -43,7 +46,9 @@ export const accountSchema = z.object({
   lastActivity: z.string(),
   issue: z.string().nullable(),
   spark: z.array(z.number()),
-  minuteCap: z.number(),
+  // Nullable: Assistable minute-cap usage is not fetched/stored yet. null = not
+  // tracked. Mock mode still supplies a number.
+  minuteCap: z.number().nullable(),
 });
 export type Account = z.infer<typeof accountSchema>;
 
