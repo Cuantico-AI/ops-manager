@@ -50,6 +50,37 @@ docker compose exec postgres psql -U ops -d opsmanager -c \
   "SELECT id, status, agent_id, started_at, completed_at FROM jobs ORDER BY started_at DESC LIMIT 5;"
 ```
 
+## Dashboard + read API (npm workspaces)
+
+The repo is an npm workspace monorepo:
+
+- root (`src/`) — the Fastify API + worker backend (unchanged entry point `dist/server.js`)
+- [`packages/contracts`](./packages/contracts) — `@cuantico/contracts`, the shared read-API contract (Zod schemas + types) imported by **both** the backend and the dashboard, so a shape change is a compile error on both sides
+- [`apps/dashboard`](./apps/dashboard) — `@cuantico/dashboard`, the Vite + React + TS fleet dashboard (rebuild of the Claude Design prototype)
+
+> **One-time after pulling these changes:** run `npm install` at the repo root. This wires up the workspace symlinks and regenerates `package-lock.json`, which the Docker build needs (`npm ci` requires an in-sync lockfile).
+
+**Read API.** The backend serves the dashboard read-model under `/api`, registered in [src/server.ts](./src/server.ts) via `registerReadApi`:
+
+- `GET /api/fleet`, `GET /api/accounts/:id`, `GET /api/requests`, `GET /api/approvals`, `GET /api/qa/flags`, `GET /api/qa/health`, `GET /api/audit`
+- `POST /api/approvals/:id/resolve` (`{ decision: "approve" | "reject" }`)
+- `POST /api/qa/flags/:id/resolve` (`{ decision: "confirm" | "dismiss" }`)
+
+The data source is selectable with `DASHBOARD_API_SOURCE`:
+
+- `mock` (default) — in-memory dataset; the dashboard works end-to-end with no DB
+- `postgres` — real reads from `accounts`, `approvals`, `audit_log`, `qa_reviews`, and the new `requests` table (migrations [026](./migrations/026_dashboard_requests.sql) / [027](./migrations/027_qa_flag_resolutions.sql)). Some presentation-only fields (PIT days-to-expiry, Assistable minute cap, activity sparkline) are derived and flagged in `src/api/postgres-data-source.ts` until they become first-class columns.
+
+**Run the dashboard locally:**
+
+```bash
+npm install                  # once, at repo root
+npm run dev                  # backend on :3000 (builds @cuantico/contracts first)
+npm run dev:dashboard        # dashboard on :5173, proxying /api -> :3000
+```
+
+Point the proxy elsewhere (e.g. the docker stack on :3100) with `VITE_API_TARGET=http://localhost:3100 npm run dev:dashboard`.
+
 ## Run tests
 
 With Postgres and Redis running locally (or via `docker compose up postgres redis -d`):

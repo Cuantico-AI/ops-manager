@@ -6,17 +6,25 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build:contracts": "npm run build --workspace @cuantico/contracts",
+    "dev": "npm run build:contracts && tsx watch src/server.ts",
+    "dev:api": "cross-env DASHBOARD_API_ONLY=true npm run dev",
+    "build": "npm run build:contracts && tsc",
     "start": "node dist/server.js",
-    "test": "vitest run",
+    "test": "npm run build:contracts && vitest run",
     "lint": "eslint src tests",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run build:contracts && tsc --noEmit",
     "migrate": "tsx src/lib/db/migrate-cli.ts",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "dev:dashboard": "npm run build:contracts && npm run dev --workspace @cuantico/dashboard"
   },
   "dependencies": {
+    "@cuantico/contracts": "*",
     "@slack/bolt": "^4.4.0",
     "@slack/web-api": "^7.9.1",
     "bullmq": "^5.44.0",
@@ -29,14 +37,15 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.22.0",
     "@types/node": "^22.13.10",
     "@types/pg": "^8.11.11",
-    "@eslint/js": "^9.22.0",
+    "cross-env": "^7.0.3",
     "eslint": "^9.22.0",
-    "typescript-eslint": "^8.26.1",
     "prettier": "^3.5.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "typescript-eslint": "^8.26.1",
+    "vitest": "^4.1.8"
   }
 }

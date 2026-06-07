@@ -6,6 +6,12 @@
 
 ---
 
+## Companion documents
+
+- [`ARCHITECTURE-REVIEW-2026-06.md`](./ARCHITECTURE-REVIEW-2026-06.md) — the record of the June 2026 architecture review (HA infrastructure, visual-first roadmap reorder, crons-vs-agents discipline, and the QA agent layer). It is a decision record that folds into this document once the HA migration is sequenced. **This file (`ARCHITECTURE.md`) remains the source of truth**; if the review and this doc conflict, this doc wins once the decisions are folded in.
+
+---
+
 ## 1. Mission
 
 Remove Jonathan from day-to-day fleet operations across 60+ client accounts (GHL, Assistable, n8n) while preserving:
