@@ -8,6 +8,17 @@ import { QAHealthPanel } from './QAView';
 
 function pitMeta(a: Account): { color: string; label: string; sub: string; pct: number } {
   if (a.pit === 'expired') return { color: 'var(--red)', label: 'Expired', sub: 'rotate now', pct: 0 };
+  // pitDays is null when days-to-expiry isn't tracked yet — show the real status
+  // without faking a countdown.
+  if (a.pitDays === null) {
+    const valid = a.pit === 'valid';
+    return {
+      color: valid ? 'var(--green)' : 'var(--amber)',
+      label: valid ? 'Valid' : 'Expiring',
+      sub: 'expiry not tracked',
+      pct: valid ? 100 : 40,
+    };
+  }
   if (a.pit === 'expiring')
     return { color: 'var(--amber)', label: 'Expiring', sub: `${a.pitDays} days left`, pct: Math.max(8, (a.pitDays / 90) * 100) };
   return { color: 'var(--green)', label: 'Valid', sub: `${a.pitDays} days left`, pct: (a.pitDays / 90) * 100 };
@@ -118,10 +129,10 @@ export function AccountDetail({ detail, onBack, onOpenApprovals, onOpenQA }: Acc
                 ),
               ],
               ['Assistant', a.assistantId ?? '—'],
-              ['Minute usage', `${a.minuteCap}% of cap`],
+              ['Minute usage', a.minuteCap === null ? 'not tracked' : `${a.minuteCap}% of cap`],
               ['Last call', a.assistable === 'connected' ? a.lastActivity : '—'],
             ]}
-            bar={{ pct: a.minuteCap, color: a.minuteCap > 90 ? 'var(--amber)' : 'var(--accent)' }}
+            bar={a.minuteCap === null ? null : { pct: a.minuteCap, color: a.minuteCap > 90 ? 'var(--amber)' : 'var(--accent)' }}
           />
 
           <IntegrationCard

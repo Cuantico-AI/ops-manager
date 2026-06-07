@@ -108,6 +108,8 @@ Call / SMS ends
 
 **Timing:** Phase 3+, gated on the Assistable post-call webhook being wired (currently on the open-items list). But the QA surface goes into the dashboard design *now*, as a placeholder if needed, so the data contract accounts for it from the start instead of being retrofitted.
 
+**Decision (2026-06) — transcript reference, not transcript.** Resolving open item #4 from `DASHBOARD-HANDOFF.md`: transcripts are deliberately **not** persisted (privacy). Instead we keep the **Assistable call/conversation ID** as the reference. `qa_reviews.call_id` already stores it; this is now surfaced as `QaFlag.callId` in the read contract and shown on the QA review card, so the human-review queue can point back to the source call without ever storing the transcript. This was settled while the contract is cheap to change, rather than retrofitting a reference after the QA agent goes live — exactly the retrofit this review warns against. The flagged quote remains the inline evidence; the call ID is the deep-link handle.
+
 ---
 
 ## What we are deliberately NOT changing
