@@ -76,6 +76,11 @@ import {
   runGhlTokenHealth,
 } from './ghl-token-health.js';
 import { getHeartbeatCron, HEARTBEAT_QUEUE, runHeartbeat } from './heartbeat.js';
+import {
+  ACCOUNT_ROLLUPS_QUEUE,
+  getAccountRollupsCron,
+  runAccountRollups,
+} from './account-rollups.js';
 
 let heartbeatWorker: Worker | null = null;
 let ghlTokenHealthWorker: Worker | null = null;
@@ -91,6 +96,7 @@ let clientCheckinFleetSummaryWorker: Worker | null = null;
 let promptOpsFleetSummaryWorker: Worker | null = null;
 let opsFleetDigestWorker: Worker | null = null;
 let opsAccountAttentionRunWorker: Worker | null = null;
+let accountRollupsWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -111,6 +117,33 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   heartbeatWorker = getWorker(HEARTBEAT_QUEUE, async () => {
     await runHeartbeat(registry);
   });
+
+  // Account daily rollups (activity sparkline + QA trend). Always on — it is
+  // deterministic plumbing with no external dependency. Register the worker
+  // first, then enqueue an immediate backfill so the rollup tables are populated
+  // before the first cron tick, plus the repeatable schedule.
+  const accountRollupsQueue = getQueue(ACCOUNT_ROLLUPS_QUEUE);
+  const accountRollupsCron = getAccountRollupsCron();
+
+  accountRollupsWorker = getWorker(ACCOUNT_ROLLUPS_QUEUE, async () => {
+    await runAccountRollups();
+  });
+
+  await accountRollupsQueue.obliterate({ force: true });
+  await accountRollupsQueue.add('account-rollups-initial', {});
+  await accountRollupsQueue.add(
+    'account-rollups-tick',
+    {},
+    {
+      repeat: { pattern: accountRollupsCron },
+      jobId: 'account-rollups-repeatable',
+    },
+  );
+
+  logger.info(
+    { cron: accountRollupsCron, queue: ACCOUNT_ROLLUPS_QUEUE },
+    'Registered account rollups cron job',
+  );
 
   if (isFleetDailyHealthEnabled()) {
     const fleetDailyHealthQueue = getQueue(FLEET_DAILY_HEALTH_QUEUE);
@@ -489,5 +522,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (opsAccountAttentionRunWorker) {
     await opsAccountAttentionRunWorker.close();
     opsAccountAttentionRunWorker = null;
+  }
+  if (accountRollupsWorker) {
+    await accountRollupsWorker.close();
+    accountRollupsWorker = null;
   }
 }
