@@ -1,0 +1,84 @@
+---
+description: The Map — ops-manager stack, deploy, and conventions. Read before acting.
+globs: **/*
+alwaysApply: true
+---
+
+# The Map — ops-manager (Cuantico Operations Manager)
+*The scouted terrain of this dungeon. Read by God and every guardian.*
+
+## Status
+- [x] Session Zero complete — 2026-06-12
+
+## Language & Tooling
+- **Language**: TypeScript (ESM, `"type": "module"`)
+- **Runtime**: Node.js >= 20 (`.nvmrc`)
+- **Package manager**: npm workspaces (`package-lock.json`)
+- **Test runner**: Vitest (`vitest.config.ts`, `tests/global-setup.ts`)
+- **Linter / formatter**: ESLint 9 flat config (`eslint.config.mjs`), Prettier (`.prettierrc`)
+- **Type strictness**: `tsc --noEmit` in CI; build via `tsc` → `dist/`
+
+## Framework & Libraries
+- **Primary framework**: Fastify 5 (HTTP API + webhooks), Slack Bolt 4 (Socket Mode)
+- **Key libraries** (use these, don't introduce alternatives without reason):
+  - `pg` — Postgres (raw SQL, no ORM)
+  - `bullmq` + `ioredis` — job queue
+  - `zod` — validation (skills, API contracts)
+  - `pino` — logging
+  - `@cuantico/contracts` — shared Zod types (`packages/contracts`)
+  - LiteLLM proxy — LLM routing (`litellm-config.yaml`)
+- **Frontend**: Vite + React + TS (`apps/dashboard`, workspace `@cuantico/dashboard`)
+- **Explicitly banned**:
+  - `BYPASS_APPROVAL=true` in production
+  - Committing `.env`, Slack tokens, GHL PIT tokens, or service-account keys
+  - ORM layers on top of existing raw `pg` pattern without an ADR
+
+## Data Layer
+- **Database**: PostgreSQL 16
+- **Access pattern**: Raw `pg` pool (`src/lib/db/client.ts`); app role `ops_app` (limited); admin `ops` for migrations
+- **Migrations location & tool**: `migrations/*.sql`, run via `npm run migrate` / `src/lib/db/migrate-cli.ts` on app boot
+- **Redis**: BullMQ queues, job state
+
+## Architecture
+- **Pattern**: Monorepo — root Fastify worker/API + `packages/contracts` + `apps/dashboard`
+- **Where business logic lives**: `src/skills/<domain>/`, `src/agents/`, `src/jobs/`
+- **Where I/O lives**: `src/lib/*` clients (ghl, slack, db, queue, llm), `src/slack/`, `src/server.ts`
+- **Source of truth doc**: `ARCHITECTURE.md` (wins over inference); phase scope in `docs/phases/PHASE-*.md`
+
+## Infra & Deploy
+- **Runtime / hosting**: Docker Compose on DigitalOcean droplet (canonical prod)
+- **CI/CD**: GitHub Actions `.github/workflows/ci.yml` — lint, typecheck, test on PR/push to `main`
+- **Deploy flow**: SSH → `git pull origin main` → `docker compose up -d --build` (migrations on app boot). Wrapper: `scripts/deploy.sh`
+- **Local dev**: `docker compose up --build` — app on http://localhost:3100 (host) → container :3000
+- **Production identifiers** (Sentinel — treat as PRODUCTION):
+  - Host: `147.182.131.74` (root SSH, `/opt/ops-manager`)
+  - Deploy path: `/opt/ops-manager`
+  - Branch: `main`
+  - Health: `http://localhost:3100/health` on droplet
+  - External: `n8n.voyze.ai` (tracked workflows, read-only health checks from this service)
+
+## House Conventions
+- **Skills**: Implement `Skill` from `src/skills/_types.ts`; register in `src/server.ts`; audit via `wrap-mutation` / `audit/log.ts`
+- **Mutations**: `requiresApproval` + Slack approval flow in prod; tests use `BYPASS_APPROVAL=true`
+- **Naming**: kebab-case files; skill ids like `ghl.set-custom-value`
+- **Error handling**: `src/lib/errors.ts` patterns; never log secrets or full transcripts in audit
+- **Logging**: Pino; `LOG_LEVEL` from env
+
+## Project-Specific Non-Negotiables
+- Immutable `audit_log` — app role INSERT+SELECT only; never delete audit rows
+- Human approval on every mutating skill in production (`src/lib/approval/`)
+- GHL PIT tokens and roster sheets with tokens stay private; never paste token-bearing URLs in chat or commits
+- Phase docs define scope — don't implement out-of-phase features without explicit user direction
+- This service **operates** GHL/Assistable/n8n; it does not replace Bot Factory or customer-facing AI
+
+## God routing hints (this repo)
+| Work type | Start with |
+|-----------|------------|
+| Slack commands, Bolt, approvals UI | `slack-app-guardian` |
+| Cron jobs, BullMQ schedules | `cron-scheduling-guardian` |
+| SQL migrations, schema, indexes | `db-guardian` |
+| Dockerfile, compose, CI, deploy | `devops-guardian` |
+| Secrets, tokens, audit, mutations | `security-guardian` |
+| LiteLLM, agent roles, QA prompts | `mind-guardian` |
+| Dashboard UI, React | `react-guardian` |
+| Formal plan close-out | `security-guardian` then `quality-guardian` |

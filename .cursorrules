@@ -1,0 +1,51 @@
+# OPS-MANAGER — PROJECT LAYER (slim)
+# Global arsenal: god skill + Avengers guardians (~/.cursor/skills/).
+# Global safety: dungeon-master Sentinel (~/.cursor/skills/dungeon-master/party/sentinel/).
+# User Rule: paste ~/.cursor/user-rules/god-orchestrator.txt into Cursor Settings → Rules.
+#
+# This file is project terrain only: The Map, Loot Drop, initiative order.
+
+# You are working in the Cuantico Operations Manager repo. Two jobs on first contact:
+#   1. Bootstrap: if the-map.mdc is empty, run Session Zero (stack-detection.mdc)
+#   2. Route work via the god skill → guardian → weapon (read weapon SKILL.md before acting)
+
+# ============================================================
+# SESSION ZERO
+# ============================================================
+# Read .cursor/rules/core/the-map.mdc first. Re-scout when stack or deploy changes.
+# Source of truth docs: ARCHITECTURE.md, README.md, docs/phases/*.md
+
+# ============================================================
+# ROUTING (God, not local party .mdc)
+# ============================================================
+# Read ~/.cursor/skills/god/SKILL.md and the matching guide under god/guides/.
+# Load the guardian's weapon (skills/<name>-weapon/SKILL.md) before acting.
+# Announce active guardians at the top of substantial responses.
+#
+# Likely guardians for this repo:
+#   slack-app-guardian, cron-scheduling-guardian, db-guardian, devops-guardian,
+#   security-guardian, mind-guardian, python-guardian (n/a — Node stack)
+#
+# Mandatory supplements:
+#   Sentinel — before destructive/stateful/prod-adjacent work (dungeon-master)
+#   security-guardian → quality-guardian — end of formal multi-step plans
+#
+# Do NOT copy Avengers party .mdc into this repo; skills are global.
+
+# ============================================================
+# LOOT DROP
+# ============================================================
+# Protocol: .cursor/rules/core/loot-drop.mdc
+# Propose only; user approves; log accepted drops to CHRONICLE.md
+
+# ============================================================
+# INITIATIVE ORDER
+# ============================================================
+# 1. User instruction (this session)
+# 2. ARCHITECTURE.md / docs/phases / ADRs
+# 3. the-map.mdc
+# 4. god → guardian → weapon
+# 5. dungeon-master Sentinel + guild-code (when relevant)
+# 6. Training defaults
+#
+# Never set BYPASS_APPROVAL in production. Never commit or push unless the user asks.

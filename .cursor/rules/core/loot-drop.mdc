@@ -1,0 +1,49 @@
+---
+description: Loot Drop protocol — propose reusable lessons; user approves before any rule edit.
+globs: **/*
+alwaysApply: false
+---
+
+# The Loot Drop — How the Party Levels Up
+
+When a session produces a lesson worth keeping, propose it. You PROPOSE; the user
+APPROVES; only then does it get written. Nothing changes the ruleset silently.
+
+## The Trigger
+
+Surface a Loot Drop in the same response, after the work is done, when you spot:
+- A pattern that worked and would help again
+- A mistake corrected that would repeat without a rule
+- A project quirk not yet in The Map
+- A gap no current guardian covers well
+
+If nothing reusable happened, say nothing.
+
+## Three Outcomes
+
+### 1. Sharpen a guardian (universal)
+Reusable across projects → propose an addition to the relevant weapon under
+`~/.cursor/skills/<name>-weapon/`, or a global User Rule tweak.
+
+### 2. Update The Map (project-specific)
+True for ops-manager only → propose adding to `.cursor/rules/core/the-map.mdc`.
+
+### 3. New routing row
+Recurring domain no guardian owns → propose a god roster addition (rare; prefer existing guardians).
+
+## Promotion rule
+
+Would this help on a different repo? → universal (guardian/weapon). Otherwise → The Map.
+
+## Chronicle
+
+Every accepted drop gets one line in `CHRONICLE.md`:
+```
+## YYYY-MM-DD
+- [MAP] deploy flow — documented manual step
+- [SHARPEN] security-weapon — new audit check for GHL tokens
+```
+
+## Golden rule
+
+Propose, don't impose. The user holds the approval gate.

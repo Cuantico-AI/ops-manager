@@ -1,0 +1,76 @@
+---
+description: Stack auto-detection protocol. How to learn an unknown project.
+globs: **/*
+alwaysApply: false
+---
+
+# Scout the Terrain — Stack Detection Protocol
+
+When you encounter a project you haven't characterized yet (no `the-map.mdc`
+exists, or it's empty), run this before writing code.
+
+## Detection Order
+
+Read these signals and stop reasoning from assumptions once you have evidence:
+
+### 1. Language + Package Manager (the manifest)
+| File present | Language | Package manager signal |
+|---|---|---|
+| `package.json` + `pnpm-lock.yaml` | JS/TS | pnpm |
+| `package.json` + `yarn.lock` | JS/TS | yarn |
+| `package.json` + `package-lock.json` | JS/TS | npm |
+| `pyproject.toml` + `poetry.lock` | Python | poetry |
+| `requirements.txt` | Python | pip |
+| `go.mod` | Go | go modules |
+| `Cargo.toml` | Rust | cargo |
+| `pom.xml` / `build.gradle` | Java/Kotlin | maven/gradle |
+| `*.csproj` / `*.sln` | C# | dotnet |
+| `Gemfile` | Ruby | bundler |
+| `composer.json` | PHP | composer |
+
+### 2. Framework (read the dependencies)
+Open the manifest and read actual installed packages. Don't assume — confirm.
+- JS backend: is it Express? Fastify? Nest? Hono? Koa?
+- JS frontend: React? Vue? Svelte? Solid? Next? Remix?
+- Python: Django? FastAPI? Flask?
+- Note the EXACT framework. Rules differ sharply between them.
+
+### 3. Data layer
+- Look for ORM/driver deps: pg, mysql2, mongoose, prisma, drizzle, sqlalchemy, gorm
+- Look for `migrations/`, `prisma/schema.prisma`, `*.sql`
+- Note the DB engine and access pattern (raw driver vs ORM)
+
+### 4. Testing + Quality
+- Test runner: vitest, jest, pytest, go test, cargo test, rspec
+- Linter/formatter: eslint, prettier, ruff, black, gofmt, clippy
+- Strictness: read tsconfig `strict`, ruff/mypy config, etc.
+
+### 5. Architecture shape
+- Map the top two levels of the source tree
+- Identify the pattern: layered (routes/services/repos), feature-folders, MVC, hexagonal, monorepo
+- Note where business logic lives vs where I/O lives
+
+### 6. Infra + CI
+- Dockerfile / docker-compose → runtime + local services
+- `.github/workflows`, `.gitlab-ci.yml`, etc. → CI gates, deploy targets
+- `.env.example` → external services and required secrets
+
+### 7. Intent docs (highest-value, read fully)
+- ARCHITECTURE.md, README.md, CONTRIBUTING.md, docs/, ADR/ or decisions/
+- These encode human intent. They OUTRANK your inference.
+
+## After Detection
+
+Write `.cursor/rules/core/the-map.mdc` with everything you found, using the
+template already in that file. Be specific — "Fastify 4.x, Postgres 16 via pg, no ORM,
+pnpm, Vitest, ESLint strict, deploys to a DigitalOcean droplet via PR→main→pull."
+
+Then announce briefly: "Detected: [stack summary]. Generated project rules. Ready."
+
+## When Detection Fails
+
+If the repo is empty or has no manifest, do NOT invent a stack. Ask the user:
+- What are we building (web app / API / CLI / library / service)?
+- Language + framework preference?
+- Where does it deploy?
+Then write `the-map.mdc` from their answers.
