@@ -20,14 +20,14 @@ cd /opt/ops-manager
 bash scripts/scaffold-env.sh        # renders scripts/env.template -> /opt/ops-manager/.env (0600 root:root)
 ```
 
-`scaffold-env.sh` generates `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_APP_PASSWORD`, and `LITELLM_MASTER_KEY` with `openssl rand -base64 32`, mapped to **base64url** so the values stay URL-safe inside the `postgres://` strings docker-compose builds from them. It refuses to overwrite an existing `.env` and never prints secrets. Then fill the four `REPLACE_ME_*` placeholders by hand (paste real values, keep mode `0600`):
+`scaffold-env.sh` generates `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_APP_PASSWORD`, and `LITELLM_MASTER_KEY` with `openssl rand -base64 32`, mapped to **base64url** so the values stay URL-safe inside the `postgres://` strings docker-compose builds from them. It refuses to overwrite an existing `.env` and never prints secrets. Then fill the four `REPLACE_ME_`* placeholders by hand (paste real values, keep mode `0600`):
 
 - `ANTHROPIC_API_KEY`
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`
 
 ## ⚠️ BYPASS_APPROVAL
 
-The droplet `.env` currently sets **`BYPASS_APPROVAL=true`** — the Phase-4 approval gate is bypassed, so mutating skills execute without human approval. This was deliberate for Phase 1 bring-up. **Set it to `false` (and restart the app) before any real mutating / production use.**
+The droplet `.env` sets `BYPASS_APPROVAL=false` — the Phase-4 approval gate is live and verified in both directions. Mutating skills require human approval before executing.
 
 ## Slack identity & token fingerprints
 
@@ -52,12 +52,14 @@ grep '^SLACK_APP_TOKEN=' /opt/ops-manager/.env | cut -d= -f2- | tr -d '\r\n' | s
 
 ## Commits shipped 2026-05-20
 
-| Commit | Summary |
-|--------|---------|
+
+| Commit    | Summary                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `538ef1e` | fix: env-var substitution for all secrets in `docker-compose.yml` (bare `${VAR}`, fail-loud — no committed dev passwords) |
-| `72a9c91` | fix(db): sync `ops_app` role password from `DATABASE_URL` after migrations, with a Vitest integration test |
-| `1043a9d` | chore(deploy): add `scripts/env.template` + `scripts/scaffold-env.sh` for generating the droplet `.env` |
-| `65989c6` | docs: make the DO droplet (`/opt/ops-manager`) the canonical deployment; laptop compose = local dev only |
+| `72a9c91` | fix(db): sync `ops_app` role password from `DATABASE_URL` after migrations, with a Vitest integration test                |
+| `1043a9d` | chore(deploy): add `scripts/env.template` + `scripts/scaffold-env.sh` for generating the droplet `.env`                   |
+| `65989c6` | docs: make the DO droplet (`/opt/ops-manager`) the canonical deployment; laptop compose = local dev only                  |
+
 
 ## What changed and why
 
