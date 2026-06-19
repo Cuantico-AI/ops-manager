@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ops
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
@@ -15,6 +16,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -23,6 +25,7 @@ services:
 
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
+    restart: unless-stopped
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
     command: ['--config', '/app/config.yaml', '--port', '4000']
@@ -38,6 +41,7 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     ports:
       - '3100:3000'
     env_file:
