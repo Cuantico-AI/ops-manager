@@ -44,4 +44,28 @@ describe('AuditLogger', () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it('rejects an unsafe UUID cast in job_id', async () => {
+    const audit = new AuditLogger();
+    const invalidJobId = 'not-a-valid-uuid';
+
+    await expect(
+      audit.log({
+        jobId: invalidJobId,
+        actor: 'system',
+        action: 'test.uuid-cast',
+        target: 'test-target',
+        mutated: false,
+      }),
+    ).resolves.toBeUndefined(); // silently swallows the DB error, does not throw
+
+    // Verify nothing was written — query by action instead of job_id
+    // to avoid a second UUID cast error at the query level
+    const { rows } = await query<{ action: string }>(
+      `SELECT action FROM audit_log WHERE action = $1 LIMIT 1`,
+      ['test.uuid-cast'],
+    );
+
+    expect(rows).toHaveLength(0); // nothing was written with an invalid UUID
+  });
 });
