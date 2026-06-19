@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@cuantico/contracts": "*",
+    "@logtail/pino": "^0.5.8",
     "@slack/bolt": "^4.4.0",
     "@slack/web-api": "^7.9.1",
     "bullmq": "^5.44.0",
