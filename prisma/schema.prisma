@@ -1,0 +1,264 @@
+// NOTE: The following CHECK constraints exist in the database but are not
+// representable in Prisma's schema language (confirmed: Prisma has no native
+// @@check syntax as of v7). They remain enforced at the Postgres level and
+// were NOT lost during introspection -- Prisma simply doesn't model them.
+// If this schema is ever used to provision a fresh database (prisma migrate
+// deploy against an empty DB), these must be added back manually via SQL:
+//
+//   qa_reviews:               score BETWEEN 0 AND 100
+//   qa_reviews:                transcript_chars >= 0
+//   prompt_ops_reviews:        risk_level IN ('low', 'medium', 'high')
+//   prompt_ops_reviews:        request_chars >= 0
+//   prompt_ops_reviews:        current_prompt_chars >= 0
+//   prompt_ops_reviews:        conversation_sample_chars >= 0
+//   client_checkin_briefs:    status IN ('healthy', 'watch', 'at_risk')
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// We could not retrieve columns for the underlying table. Either it has none or you are missing rights to see them. Please check your privileges.
+// model migrations {
+// @@map("_migrations")
+// }
+
+model account_daily_metrics {
+  account_id     String   @db.Uuid
+  day            DateTime @db.Date
+  activity_count Int      @default(0)
+  qa_avg_score   Int?
+  accounts       accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, day])
+  @@index([day(sort: Desc)], map: "idx_account_daily_metrics_day")
+}
+
+model accounts {
+  id                          String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                        String
+  ghl_location_id             String?
+  ghl_pit_token_ref           String?
+  assistable_subaccount_id    String?
+  n8n_workflow_ids            String[]                @default([])
+  status                      String                  @default("active")
+  created_at                  DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                @default(now()) @db.Timestamptz(6)
+  metadata                    Json?                   @default("{}")
+  ghl_token_status            String?
+  ghl_token_checked_at        DateTime?               @db.Timestamptz(6)
+  assistable_oauth_status     String?
+  assistable_oauth_checked_at DateTime?               @db.Timestamptz(6)
+  n8n_workflow_status         String?
+  n8n_workflow_checked_at     DateTime?               @db.Timestamptz(6)
+  account_daily_metrics       account_daily_metrics[]
+  client_checkin_briefs       client_checkin_briefs[]
+  prompt_ops_reviews          prompt_ops_reviews[]
+  qa_reviews                  qa_reviews[]
+  requests                    requests[]
+
+  @@index([assistable_oauth_checked_at(sort: Desc)], map: "idx_accounts_assistable_oauth_checked_at")
+  @@index([assistable_oauth_status], map: "idx_accounts_assistable_oauth_status")
+  @@index([ghl_location_id], map: "idx_accounts_ghl_location")
+  @@index([ghl_token_checked_at(sort: Desc)], map: "idx_accounts_ghl_token_checked_at")
+  @@index([ghl_token_status], map: "idx_accounts_ghl_token_status")
+  @@index([n8n_workflow_checked_at(sort: Desc)], map: "idx_accounts_n8n_workflow_checked_at")
+  @@index([n8n_workflow_status], map: "idx_accounts_n8n_workflow_status")
+  @@index([status], map: "idx_accounts_status")
+}
+
+model agents {
+  id                    String   @id
+  display_name          String
+  system_prompt_version String?
+  skills                String[] @default([])
+  enabled               Boolean  @default(true)
+  approval_policy       Json?    @default("{}")
+  jobs                  jobs[]
+}
+
+model approvals {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id           String     @db.Uuid
+  skill            String
+  target_summary   String
+  proposed_action  Json
+  status           String     @default("pending")
+  requested_at     DateTime   @default(now()) @db.Timestamptz(6)
+  resolved_at      DateTime?  @db.Timestamptz(6)
+  resolved_by      String?
+  slack_message_ts String?
+  expires_at       DateTime   @db.Timestamptz(6)
+  jobs             jobs       @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requests         requests[]
+
+  @@index([job_id], map: "idx_approvals_job_id")
+  @@index([status], map: "idx_approvals_status")
+}
+
+model audit_log {
+  id          BigInt   @id @default(autoincrement())
+  job_id      String?  @db.Uuid
+  timestamp   DateTime @default(now()) @db.Timestamptz(6)
+  actor       String
+  action      String
+  target      String
+  mutated     Boolean  @default(false)
+  input       Json?
+  output      Json?
+  approval_id String?  @db.Uuid
+  jobs        jobs?    @relation(fields: [job_id], references: [id], onUpdate: NoAction)
+
+  @@index([job_id], map: "idx_audit_log_job_id")
+  @@index([timestamp(sort: Desc)], map: "idx_audit_log_timestamp")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model client_checkin_briefs {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id              String?  @db.Uuid
+  account_id          String   @db.Uuid
+  status              String
+  summary             String
+  talking_points      Json     @default("[]")
+  open_issues         Json     @default("[]")
+  follow_up_questions Json     @default("[]")
+  signals             Json     @default("{}")
+  model_used          String
+  generated_at        DateTime @default(now()) @db.Timestamptz(6)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  accounts            accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  jobs                jobs?    @relation(fields: [job_id], references: [id], onUpdate: NoAction)
+
+  @@index([account_id, generated_at(sort: Desc)], map: "idx_client_checkin_briefs_account_generated_at")
+  @@index([job_id], map: "idx_client_checkin_briefs_job_id")
+  @@index([status, generated_at(sort: Desc)], map: "idx_client_checkin_briefs_status_generated_at")
+}
+
+model jobs {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agent_id              String
+  trigger_type          String
+  trigger_payload       Json?
+  status                String                  @default("pending")
+  input                 Json?
+  output                Json?
+  error                 Json?
+  started_at            DateTime                @default(now()) @db.Timestamptz(6)
+  completed_at          DateTime?               @db.Timestamptz(6)
+  account_id            String?                 @db.Uuid
+  approvals             approvals[]
+  audit_log             audit_log[]
+  client_checkin_briefs client_checkin_briefs[]
+  agents                agents                  @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  prompt_ops_reviews    prompt_ops_reviews[]
+  qa_reviews            qa_reviews[]
+
+  @@index([started_at(sort: Desc)], map: "idx_jobs_started_at")
+  @@index([status], map: "idx_jobs_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model prompt_ops_reviews {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id                    String?  @db.Uuid
+  account_id                String   @db.Uuid
+  risk_level                String
+  blocked                   Boolean  @default(false)
+  summary                   String
+  intended_outcome          String
+  recommended_changes       Json     @default("[]")
+  test_plan                 Json     @default("[]")
+  rollback_plan             Json     @default("[]")
+  clarifying_questions      Json     @default("[]")
+  blockers                  Json     @default("[]")
+  model_used                String
+  request_chars             Int      @default(0)
+  current_prompt_chars      Int      @default(0)
+  conversation_sample_chars Int      @default(0)
+  reviewed_at               DateTime @default(now()) @db.Timestamptz(6)
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  accounts                  accounts @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  jobs                      jobs?    @relation(fields: [job_id], references: [id], onUpdate: NoAction)
+
+  @@index([account_id, reviewed_at(sort: Desc)], map: "idx_prompt_ops_reviews_account_reviewed_at")
+  @@index([blocked, reviewed_at(sort: Desc)], map: "idx_prompt_ops_reviews_blocked_reviewed_at")
+  @@index([job_id], map: "idx_prompt_ops_reviews_job_id")
+}
+
+model qa_flag_resolutions {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  qa_review_id  String?     @db.Uuid
+  flag_key      String      @unique(map: "idx_qa_flag_resolutions_flag_key")
+  finding_index Int?
+  decision      String
+  resolved_by   String
+  resolved_at   DateTime    @default(now()) @db.Timestamptz(6)
+  qa_reviews    qa_reviews? @relation(fields: [qa_review_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([qa_review_id], map: "idx_qa_flag_resolutions_review")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model qa_reviews {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  job_id              String?               @db.Uuid
+  account_id          String                @db.Uuid
+  call_id             String?               @unique(map: "idx_qa_reviews_call_id_unique", where: raw("(call_id IS NOT NULL)"))
+  review_trigger      String                @default("manual")
+  score               Int
+  pass                Boolean
+  call_type           String                @default("unknown")
+  summary             String
+  findings            Json                  @default("[]")
+  model_used          String
+  escalated           Boolean               @default(false)
+  transcript_chars    Int                   @default(0)
+  reviewed_at         DateTime              @default(now()) @db.Timestamptz(6)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  qa_flag_resolutions qa_flag_resolutions[]
+  accounts            accounts              @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  jobs                jobs?                 @relation(fields: [job_id], references: [id], onUpdate: NoAction)
+
+  @@index([account_id, reviewed_at(sort: Desc)], map: "idx_qa_reviews_account_reviewed_at")
+  @@index([job_id], map: "idx_qa_reviews_job_id")
+  @@index([pass, reviewed_at(sort: Desc)], map: "idx_qa_reviews_pass_reviewed_at")
+}
+
+model requests {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  account_id  String?    @db.Uuid
+  title       String
+  status      String     @default("new")
+  channel     String     @default("human")
+  priority    String     @default("med")
+  approval_id String?    @db.Uuid
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime   @default(now()) @db.Timestamptz(6)
+  accounts    accounts?  @relation(fields: [account_id], references: [id], onUpdate: NoAction)
+  approvals   approvals? @relation(fields: [approval_id], references: [id], onUpdate: NoAction)
+
+  @@index([account_id], map: "idx_requests_account_id")
+  @@index([approval_id], map: "idx_requests_approval_id")
+  @@index([status], map: "idx_requests_status")
+  @@index([updated_at(sort: Desc)], map: "idx_requests_updated_at")
+}
+
+model secrets {
+  id              String   @id
+  kind            String
+  encrypted_value String
+  iv              String
+  auth_tag        String
+  key_version     String   @default("v1")
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+  metadata        Json?    @default("{}")
+
+  @@index([kind], map: "idx_secrets_kind")
+}
