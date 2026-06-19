@@ -1,4 +1,12 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV ?? 'production',
+  tracesSampleRate: 0,
+});
+
 import Fastify from 'fastify';
 import { auditLogger } from './lib/audit/log.js';
 import { closePool, getPool } from './lib/db/client.js';
@@ -130,6 +138,7 @@ async function shutdown(signal: string): Promise<void> {
   }
   await closeQueue();
   await closePool();
+  await Sentry.close(2000); // 2 second timeout
   process.exit(0);
 }
 
@@ -138,5 +147,6 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 main().catch((err: unknown) => {
   logger.error({ err }, 'Fatal startup error');
+  Sentry.captureException(err);
   process.exit(1);
 });
