@@ -39,6 +39,7 @@ export const n8nCheckWorkflowHealthSkill: Skill<
   description: 'Check n8n workflow health for fleet accounts',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: checkN8nWorkflowHealthInputSchema,
   async execute(input, ctx: SkillContext): Promise<CheckN8nWorkflowHealthOutput> {
     const concurrency = input.concurrency ?? DEFAULT_CONCURRENCY;

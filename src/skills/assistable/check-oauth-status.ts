@@ -36,6 +36,7 @@ export const assistableCheckOAuthStatusSkill: Skill<
   description: 'Check Assistable GHL OAuth connection health for fleet accounts',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: checkAssistableOAuthInputSchema,
   async execute(input, ctx: SkillContext): Promise<CheckAssistableOAuthOutput> {
     const concurrency = input.concurrency ?? DEFAULT_CONCURRENCY;

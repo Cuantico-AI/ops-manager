@@ -24,6 +24,7 @@ export const ghlListOpportunitiesSkill: Skill<ListOpportunitiesInput, ListOpport
   description: 'Summarize GHL opportunities by pipeline stage for an account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listOpportunitiesInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListOpportunitiesOutput> {
     const account = await resolveAccountInput(input);

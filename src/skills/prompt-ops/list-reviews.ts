@@ -24,6 +24,7 @@ export const promptOpsListReviewsSkill: Skill<
   description: 'List recent persisted Prompt Ops reviews for an account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listPromptOpsReviewsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListPromptOpsReviewsOutput> {
     await ctx.audit.log({

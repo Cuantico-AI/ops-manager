@@ -23,6 +23,7 @@ export const clientCheckinListBriefsSkill: Skill<
   description: 'List recent persisted client check-in briefs for an account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listClientCheckinBriefsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListClientCheckinBriefsOutput> {
     await ctx.audit.log({

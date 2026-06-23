@@ -19,6 +19,7 @@ export const opsFleetDigestSkill: Skill<OpsFleetDigestInput, OpsFleetDigestSumma
   description: 'Summarize cross-role Phase 5 fleet attention signals',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: opsFleetDigestInputSchema,
   async execute(input, ctx: SkillContext): Promise<OpsFleetDigestSummary> {
     await ctx.audit.log({

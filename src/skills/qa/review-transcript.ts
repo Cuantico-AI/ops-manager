@@ -63,6 +63,7 @@ export const qaReviewTranscriptSkill: Skill<ReviewTranscriptInput, ReviewTranscr
   description: 'Review an AI call or chat transcript and return structured QA findings',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: reviewTranscriptInputSchema,
   async execute(input, ctx: SkillContext): Promise<ReviewTranscriptOutput> {
     const account = await resolveAccountInput(input);

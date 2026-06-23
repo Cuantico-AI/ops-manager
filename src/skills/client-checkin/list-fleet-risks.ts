@@ -24,6 +24,7 @@ export const clientCheckinListFleetRisksSkill: Skill<
   description: 'Summarize recent at-risk client check-in briefs across the fleet',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listClientCheckinFleetRisksInputSchema,
   async execute(input, ctx: SkillContext): Promise<ClientCheckinFleetSummary> {
     await ctx.audit.log({

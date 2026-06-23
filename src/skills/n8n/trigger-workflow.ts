@@ -30,6 +30,7 @@ export const n8nTriggerWorkflowSkill: Skill<TriggerWorkflowInput, TriggerWorkflo
   description: 'Trigger a tracked client workflow on n8n',
   mutates: true,
   requiresApproval: true,
+  autonomousEligible: false,
   schema: triggerWorkflowInputSchema,
   async execute(input, ctx: SkillContext): Promise<TriggerWorkflowOutput> {
     const account = await resolveAccountInput(input);

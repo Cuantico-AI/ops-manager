@@ -22,6 +22,7 @@ export const promptOpsListFleetRisksSkill: Skill<
   description: 'Summarize recent blocked and high-risk Prompt Ops reviews across the fleet',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listPromptOpsFleetRisksInputSchema,
   async execute(input, ctx: SkillContext): Promise<PromptOpsFleetSummary> {
     await ctx.audit.log({

@@ -14,6 +14,7 @@ export const qaGetReviewSkill: Skill<GetQaReviewInput, QaReviewRecord> = {
   description: 'Retrieve a persisted QA review by Assistable call ID',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: getQaReviewInputSchema,
   async execute(input, ctx: SkillContext): Promise<QaReviewRecord> {
     await ctx.audit.log({

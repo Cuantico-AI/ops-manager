@@ -18,6 +18,7 @@ export const ghlSnapshotSkill: Skill<GhlSnapshotInput, GhlSnapshotOutput> = {
   description: 'Build a GHL pipeline and opportunity snapshot for one account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: ghlSnapshotInputSchema,
   async execute(input, ctx: SkillContext): Promise<GhlSnapshotOutput> {
     const account = await resolveAccountInput(input);

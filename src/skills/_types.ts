@@ -17,6 +17,7 @@ export interface Skill<Input, Output> {
   description: string;
   mutates: boolean;
   requiresApproval: boolean;
+  autonomousEligible: boolean;
   schema: z.ZodSchema<Input>;
   execute(input: Input, ctx: SkillContext): Promise<Output>;
 }
