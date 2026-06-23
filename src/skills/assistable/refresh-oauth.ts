@@ -44,8 +44,8 @@ export const assistableRefreshOAuthSkill: Skill<
 > = {
   id: 'assistable.refresh-oauth',
   description: 'Diagnose and reconnect Assistable GHL OAuth for an account',
-  mutates: false,
-  requiresApproval: false,
+  mutates: true,
+  requiresApproval: true,
   schema: refreshAssistableOAuthInputSchema,
   async execute(input, ctx: SkillContext): Promise<RefreshAssistableOAuthOutput> {
     const account = await resolveAccountInput(input);
