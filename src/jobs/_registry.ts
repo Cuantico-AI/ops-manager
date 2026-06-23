@@ -81,6 +81,11 @@ import {
   getAccountRollupsCron,
   runAccountRollups,
 } from './account-rollups.js';
+import {
+  getMutationAnomalyCheckCron,
+  MUTATION_ANOMALY_CHECK_QUEUE,
+  runMutationAnomalyCheck,
+} from './mutation-anomaly-check.js';
 
 let heartbeatWorker: Worker | null = null;
 let ghlTokenHealthWorker: Worker | null = null;
@@ -97,6 +102,7 @@ let promptOpsFleetSummaryWorker: Worker | null = null;
 let opsFleetDigestWorker: Worker | null = null;
 let opsAccountAttentionRunWorker: Worker | null = null;
 let accountRollupsWorker: Worker | null = null;
+let mutationAnomalyCheckWorker: Worker | null = null;
 
 export async function registerScheduledJobs(registry: SkillRegistry): Promise<void> {
   const heartbeatQueue = getQueue(HEARTBEAT_QUEUE);
@@ -464,6 +470,28 @@ export async function registerScheduledJobs(registry: SkillRegistry): Promise<vo
   ghlConfigInventoryWorker = getWorker(GHL_CONFIG_INVENTORY_QUEUE, async () => {
     await runGhlConfigInventory(registry);
   });
+
+  const mutationAnomalyCheckQueue = getQueue(MUTATION_ANOMALY_CHECK_QUEUE);
+  const mutationAnomalyCheckCron = getMutationAnomalyCheckCron();
+
+  await mutationAnomalyCheckQueue.obliterate({ force: true });
+  await mutationAnomalyCheckQueue.add(
+    'mutation-anomaly-check-tick',
+    {},
+    {
+      repeat: { pattern: mutationAnomalyCheckCron },
+      jobId: 'mutation-anomaly-check-repeatable',
+    },
+  );
+
+  logger.info(
+    { cron: mutationAnomalyCheckCron, queue: MUTATION_ANOMALY_CHECK_QUEUE },
+    'Registered mutation anomaly check cron job',
+  );
+
+  mutationAnomalyCheckWorker = getWorker(MUTATION_ANOMALY_CHECK_QUEUE, async () => {
+    await runMutationAnomalyCheck(registry);
+  });
 }
 
 export async function stopScheduledJobs(): Promise<void> {
@@ -526,5 +554,9 @@ export async function stopScheduledJobs(): Promise<void> {
   if (accountRollupsWorker) {
     await accountRollupsWorker.close();
     accountRollupsWorker = null;
+  }
+  if (mutationAnomalyCheckWorker) {
+    await mutationAnomalyCheckWorker.close();
+    mutationAnomalyCheckWorker = null;
   }
 }
