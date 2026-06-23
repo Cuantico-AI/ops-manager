@@ -12,6 +12,11 @@ import {
   type CheckAssistableOAuthInput,
   type CheckAssistableOAuthOutput,
 } from '../skills/assistable/check-oauth-status.js';
+import {
+  refreshAssistableOAuthInputSchema,
+  type RefreshAssistableOAuthInput,
+  type RefreshAssistableOAuthOutput,
+} from '../skills/assistable/refresh-oauth.js';
 import { postMessageInputSchema } from '../skills/slack/post-message.js';
 import type { SkillRegistry } from '../skills/_registry.js';
 import type { Skill, SkillContext } from '../skills/_types.js';
@@ -56,6 +61,18 @@ export async function runAssistableOAuthHealth(registry: SkillRegistry): Promise
     >;
     const checkInput = checkAssistableOAuthInputSchema.parse({ includeInactive: false });
     const output = await checkSkill.execute(checkInput, ctx);
+
+    const eligibleForRefresh = output.results.filter(
+      (r) => r.status === 'disconnected' || r.status === 'auth-error',
+    );
+
+    for (const result of eligibleForRefresh) {
+      const refreshSkill = registry.get('assistable.refresh-oauth') as Skill<RefreshAssistableOAuthInput, RefreshAssistableOAuthOutput>;
+      await refreshSkill.execute(
+        refreshAssistableOAuthInputSchema.parse({ accountId: result.accountId }),
+        ctx,
+      );
+    }
 
     if (shouldPostIndividualHealthAlert()) {
       const channel = resolveChannel([process.env.SLACK_ALERTS_CHANNEL], '#ops-manager-alerts');

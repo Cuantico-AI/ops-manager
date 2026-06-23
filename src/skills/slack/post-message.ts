@@ -17,6 +17,7 @@ export const slackPostMessageSkill: Skill<PostMessageInput, PostMessageOutput> =
   description: 'Post a message to a Slack channel',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: postMessageInputSchema,
   async execute(input, ctx: SkillContext): Promise<PostMessageOutput> {
     const actor = ctx.agentId;

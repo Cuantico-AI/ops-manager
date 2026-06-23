@@ -34,6 +34,7 @@ export const ghlCheckPitTokenSkill: Skill<CheckPitTokenInput, CheckPitTokenOutpu
   description: 'Validate stored GHL PIT tokens against LeadConnector v2',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: checkPitTokenInputSchema,
   async execute(input, ctx: SkillContext): Promise<CheckPitTokenOutput> {
     const concurrency = input.concurrency ?? DEFAULT_CONCURRENCY;

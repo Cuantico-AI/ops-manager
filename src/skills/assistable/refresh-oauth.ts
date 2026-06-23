@@ -46,6 +46,9 @@ export const assistableRefreshOAuthSkill: Skill<
   description: 'Diagnose and reconnect Assistable GHL OAuth for an account',
   mutates: true,
   requiresApproval: true,
+  // Eligible for autonomous proposal by health-check jobs.
+  // Approval gate still fires for every autonomous trigger — no unattended execution.
+  autonomousEligible: true,
   schema: refreshAssistableOAuthInputSchema,
   async execute(input, ctx: SkillContext): Promise<RefreshAssistableOAuthOutput> {
     const account = await resolveAccountInput(input);

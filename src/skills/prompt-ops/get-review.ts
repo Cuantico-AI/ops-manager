@@ -17,6 +17,7 @@ export const promptOpsGetReviewSkill: Skill<GetPromptOpsReviewInput, PromptOpsRe
   description: 'Retrieve a persisted Prompt Ops review by ID',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: getPromptOpsReviewInputSchema,
   async execute(input, ctx: SkillContext): Promise<PromptOpsReviewRecord> {
     await ctx.audit.log({

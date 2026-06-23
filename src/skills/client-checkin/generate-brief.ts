@@ -51,6 +51,7 @@ export const clientCheckinGenerateBriefSkill: Skill<
   description: 'Generate a client check-in brief from stored account health signals',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: generateClientCheckinBriefInputSchema,
   async execute(input, ctx: SkillContext): Promise<GenerateClientCheckinBriefOutput> {
     const signals = await fetchClientCheckinSignals(input);

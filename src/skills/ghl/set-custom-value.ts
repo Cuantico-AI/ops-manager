@@ -30,6 +30,7 @@ export const ghlSetCustomValueSkill: Skill<SetCustomValueInput, SetCustomValueOu
   description: 'Update a GHL location custom value for an account',
   mutates: true,
   requiresApproval: true,
+  autonomousEligible: false,
   schema: setCustomValueInputSchema,
   async execute(input, ctx: SkillContext): Promise<SetCustomValueOutput> {
     const account = await resolveAccountInput(input);

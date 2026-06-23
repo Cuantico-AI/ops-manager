@@ -25,6 +25,7 @@ export const opsAccountDigestSkill: Skill<OpsAccountDigestInput, OpsAccountDiges
   description: 'Summarize Phase 5 attention signals for one account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: opsAccountDigestInputSchema,
   async execute(input, ctx: SkillContext): Promise<OpsAccountDigestSummary> {
     await ctx.audit.log({

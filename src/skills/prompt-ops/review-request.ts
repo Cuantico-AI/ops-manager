@@ -51,6 +51,7 @@ export const promptOpsReviewRequestSkill: Skill<
   description: 'Review a prompt-change request and return a safe Prompt Ops brief',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: reviewPromptOpsRequestInputSchema,
   async execute(input, ctx: SkillContext): Promise<ReviewPromptOpsRequestOutput> {
     const account = await resolveAccountInput(input);

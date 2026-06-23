@@ -23,6 +23,7 @@ export const ghlListWorkflowsSkill: Skill<ListWorkflowsInput, ListWorkflowsOutpu
   description: 'List GHL workflows for an account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listWorkflowsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListWorkflowsOutput> {
     const account = await resolveAccountInput(input);

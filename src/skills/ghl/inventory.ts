@@ -18,6 +18,7 @@ export const ghlInventorySkill: Skill<GhlInventoryInput, GhlInventoryOutput> = {
   description: 'Build a GHL workflow and custom field inventory for one account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: ghlInventoryInputSchema,
   async execute(input, ctx: SkillContext): Promise<GhlInventoryOutput> {
     const account = await resolveAccountInput(input);

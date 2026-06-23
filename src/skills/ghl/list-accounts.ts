@@ -24,6 +24,7 @@ export const ghlListAccountsSkill: Skill<ListAccountsInput, ListAccountsOutput> 
   description: 'List known GHL accounts and optionally sync the roster from Google Sheets',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listAccountsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListAccountsOutput> {
     const actor = ctx.agentId;

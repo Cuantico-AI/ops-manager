@@ -21,6 +21,7 @@ export const qaListReviewsSkill: Skill<ListQaReviewsSkillInput, ListQaReviewsOut
   description: 'List recent persisted QA reviews for an account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listQaReviewsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListQaReviewsOutput> {
     await ctx.audit.log({

@@ -23,6 +23,7 @@ export const ghlListCustomFieldsSkill: Skill<ListCustomFieldsInput, ListCustomFi
   description: 'List GHL custom fields for an account',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listCustomFieldsInputSchema,
   async execute(input, ctx: SkillContext): Promise<ListCustomFieldsOutput> {
     const account = await resolveAccountInput(input);

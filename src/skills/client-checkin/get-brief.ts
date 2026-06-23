@@ -20,6 +20,7 @@ export const clientCheckinGetBriefSkill: Skill<
   description: 'Retrieve a persisted client check-in brief by ID',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: getClientCheckinBriefInputSchema,
   async execute(input, ctx: SkillContext): Promise<ClientCheckinBriefRecord> {
     await ctx.audit.log({

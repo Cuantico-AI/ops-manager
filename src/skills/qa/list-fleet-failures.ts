@@ -19,6 +19,7 @@ export const qaListFleetFailuresSkill: Skill<ListFleetQaFailuresInput, FleetQaSu
   description: 'Summarize recent QA failures across the fleet',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: listFleetQaFailuresInputSchema,
   async execute(input, ctx: SkillContext): Promise<FleetQaSummary> {
     await ctx.audit.log({

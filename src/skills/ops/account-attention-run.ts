@@ -25,6 +25,7 @@ export const opsAccountAttentionRunSkill: Skill<
   description: 'Batch summarize high-attention accounts from the Phase 5 fleet digest',
   mutates: false,
   requiresApproval: false,
+  autonomousEligible: false,
   schema: opsAccountAttentionRunInputSchema,
   async execute(input, ctx: SkillContext): Promise<OpsAccountAttentionRunSummary> {
     await ctx.audit.log({
