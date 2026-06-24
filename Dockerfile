@@ -6,8 +6,11 @@ COPY apps/dashboard/package.json ./apps/dashboard/package.json
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY tsconfig.json ./
 COPY packages/contracts ./packages/contracts
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
 COPY src ./src
-RUN npm run build \
+RUN npx prisma generate \
+  && npm run build \
   && mkdir -p dist/agents/qa-review dist/agents/client-checkin dist/agents/prompt-ops \
   && cp src/agents/qa-review/prompt.md dist/agents/qa-review/prompt.md \
   && cp src/agents/client-checkin/prompt.md dist/agents/client-checkin/prompt.md \
@@ -31,6 +34,7 @@ RUN if [ -f package-lock.json ]; then \
     fi && npm cache clean --force
 COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/generated ./src/generated
 COPY migrations ./migrations
 USER ops
 EXPOSE 3100
