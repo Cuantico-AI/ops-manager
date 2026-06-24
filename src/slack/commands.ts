@@ -201,7 +201,7 @@ import type { SkillContext } from '../skills/_types.js';
 const startTime = Date.now();
 
 export function registerCommands(app: App, registry: SkillRegistry): void {
-  app.command('/ops', async ({ command, ack, respond }) => {
+  app.command(process.env.SLACK_COMMAND ?? '/ops', async ({ command, ack, respond }) => {
     await ack();
 
     const parts = command.text.trim().split(/\s+/).filter(Boolean);
