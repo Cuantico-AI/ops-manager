@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY packages/contracts/package.json ./packages/contracts/package.json
 COPY apps/dashboard/package.json ./apps/dashboard/package.json
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
 COPY tsconfig.json ./
 COPY packages/contracts ./packages/contracts
 COPY prisma ./prisma
