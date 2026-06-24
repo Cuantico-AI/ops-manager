@@ -28,10 +28,11 @@ COPY apps/dashboard/package.json ./apps/dashboard/package.json
 # (react, etc.) are kept out of the backend image. All workspace manifests are
 # copied above so the lockfile validates.
 RUN if [ -f package-lock.json ]; then \
-      npm ci --omit=dev --workspace=@cuantico/contracts --include-workspace-root; \
-    else \
-      npm install --omit=dev --workspace=@cuantico/contracts --include-workspace-root; \
-    fi && npm cache clean --force
+    npm ci --omit=dev --ignore-scripts --workspace=@cuantico/contracts --include-workspace-root; \
+  else \
+    npm install --omit=dev --ignore-scripts --workspace=@cuantico/contracts --include-workspace-root; \
+  fi && npm cache clean --force
+
 COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/generated ./src/generated
