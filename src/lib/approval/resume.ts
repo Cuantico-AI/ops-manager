@@ -1,4 +1,4 @@
-import { query } from '../db/client.js';
+import { prisma } from '../db/prisma.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { auditLogger } from '../audit/log.js';
 import { approvalGate } from './gate.js';
@@ -29,22 +29,28 @@ export async function approveAndResumeJob(
   try {
     const output = await executeApprovedJob(registry, approval, resolvedBy);
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify(output),
-      approval.jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: approval.jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify(output),
+        completed_at: new Date(),
+      },
+    });
 
     return output;
   } catch (err) {
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify({
-        message: err instanceof Error ? err.message : String(err),
-        name: err instanceof Error ? err.name : 'Error',
-      }),
-      approval.jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: approval.jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify({
+          message: err instanceof Error ? err.message : String(err),
+          name: err instanceof Error ? err.name : 'Error',
+        }),
+        completed_at: new Date(),
+      },
+    });
     throw err;
   }
 }
@@ -72,12 +78,11 @@ export async function getJobRecord(jobId: string): Promise<{
   status: string;
   input: unknown;
 }> {
-  const { rows } = await query<{ id: string; status: string; input: unknown }>(
-    `SELECT id, status, input FROM jobs WHERE id = $1 LIMIT 1`,
-    [jobId],
-  );
+  const row = await prisma.jobs.findUnique({
+    where: { id: jobId },
+    select: { id: true, status: true, input: true },
+  });
 
-  const row = rows[0];
   if (!row) {
     throw new NotFoundError(`Job not found: ${jobId}`);
   }

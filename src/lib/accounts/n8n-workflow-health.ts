@@ -1,3 +1,4 @@
+import { prisma } from '../db/prisma.js';
 import { query } from '../db/client.js';
 import type { N8nWorkflowHealthSnapshot } from '../n8n/workflow-health.js';
 
@@ -35,36 +36,22 @@ export async function listAccountsForN8nWorkflowCheck(opts: {
   accountQuery?: string;
   includeInactive?: boolean;
 }): Promise<N8nAccountForWorkflowCheck[]> {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
-
-  if (opts.accountId) {
-    params.push(opts.accountId);
-    clauses.push(`id = $${params.length}`);
-  }
-
-  if (opts.accountQuery) {
-    params.push(`%${opts.accountQuery}%`);
-    clauses.push(`name ILIKE $${params.length}`);
-  }
-
-  if (!opts.includeInactive) {
-    clauses.push("status = 'active'");
-  }
-
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const { rows } = await query<{
-    id: string;
-    name: string;
-    status: string;
-    n8n_workflow_ids: string[] | null;
-  }>(
-    `SELECT id, name, status, n8n_workflow_ids
-     FROM accounts
-     ${where}
-     ORDER BY name ASC`,
-    params,
-  );
+  const rows = await prisma.accounts.findMany({
+    where: {
+      ...(opts.accountId ? { id: opts.accountId } : {}),
+      ...(opts.accountQuery
+        ? { name: { contains: opts.accountQuery, mode: 'insensitive' } }
+        : {}),
+      ...(!opts.includeInactive ? { status: 'active' } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      n8n_workflow_ids: true,
+    },
+    orderBy: { name: 'asc' },
+  });
 
   return rows.map((row) => ({
     id: row.id,

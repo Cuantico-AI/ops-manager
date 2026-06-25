@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { resolveAccountInput } from '../accounts/resolve-account-input.js';
+import { prisma } from '../db/prisma.js';
 import { query } from '../db/client.js';
 import { NotFoundError } from '../errors.js';
 import { clientCheckinSignalsSchema, type ClientCheckinSignals } from './health-signals.js';
@@ -104,40 +105,43 @@ export async function listClientCheckinBriefsForAccount(
 ): Promise<ListClientCheckinBriefsOutput> {
   const account = await resolveAccountInput(input);
   const limit = normalizeClientCheckinHistoryLimit(input.limit);
-  const { rows } = await query<ClientCheckinBriefRow>(
-    `SELECT ccb.*, a.name AS account_name
-     FROM client_checkin_briefs ccb
-     JOIN accounts a ON a.id = ccb.account_id
-     WHERE ccb.account_id = $1
-     ORDER BY ccb.generated_at DESC
-     LIMIT $2`,
-    [account.id, limit],
-  );
+
+  const rows = await prisma.client_checkin_briefs.findMany({
+    where: { account_id: account.id },
+    include: { accounts: { select: { name: true } } },
+    orderBy: { generated_at: 'desc' },
+    take: limit,
+  });
 
   return {
     accountId: account.id,
     accountName: account.name,
     limit,
-    briefs: rows.map(mapClientCheckinBriefRow),
+    briefs: rows.map((row) =>
+      mapClientCheckinBriefRow({
+        ...row,
+        account_name: row.accounts.name,
+        status: row.status as ClientCheckinBriefRow['status'],
+      }),
+    ),
   };
 }
 
 export async function getClientCheckinBriefById(id: string): Promise<ClientCheckinBriefRecord> {
-  const { rows } = await query<ClientCheckinBriefRow>(
-    `SELECT ccb.*, a.name AS account_name
-     FROM client_checkin_briefs ccb
-     JOIN accounts a ON a.id = ccb.account_id
-     WHERE ccb.id = $1
-     LIMIT 1`,
-    [id.trim()],
-  );
+  const row = await prisma.client_checkin_briefs.findUnique({
+    where: { id: id.trim() },
+    include: { accounts: { select: { name: true } } },
+  });
 
-  const row = rows[0];
   if (!row) {
     throw new NotFoundError(`No client check-in brief found for ID "${id}"`);
   }
 
-  return mapClientCheckinBriefRow(row);
+  return mapClientCheckinBriefRow({
+    ...row,
+    account_name: row.accounts.name,
+    status: row.status as ClientCheckinBriefRow['status'],
+  });
 }
 
 export function normalizeClientCheckinHistoryLimit(limit: number | undefined): number {

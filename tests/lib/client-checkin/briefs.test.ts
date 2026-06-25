@@ -17,6 +17,10 @@ vi.mock('../../../src/lib/db/prisma.js', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    client_checkin_briefs: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -124,6 +128,12 @@ describe('listClientCheckinBriefsForAccount', () => {
       },
     ] as never);
     vi.mocked(query).mockResolvedValueOnce({ rows: [briefRow] } as never);
+    vi.mocked(prisma.client_checkin_briefs.findMany).mockResolvedValueOnce([
+      {
+        ...briefRow,
+        accounts: { name: 'Complete Lending' },
+      },
+    ] as never);
 
     const output = await listClientCheckinBriefsForAccount({
       accountQuery: 'Complete',
@@ -132,7 +142,6 @@ describe('listClientCheckinBriefsForAccount', () => {
 
     expect(output.accountName).toBe('Complete Lending');
     expect(output.briefs[0]?.status).toBe('watch');
-    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain('FROM client_checkin_briefs ccb');
   });
 });
 
@@ -142,7 +151,8 @@ describe('getClientCheckinBriefById', () => {
   });
 
   it('throws NotFoundError when no brief matches the ID', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as never);
+    const { prisma } = await import('../../../src/lib/db/prisma.js');
+    vi.mocked(prisma.client_checkin_briefs.findUnique).mockResolvedValueOnce(null as never);
 
     await expect(getClientCheckinBriefById(briefId)).rejects.toBeInstanceOf(NotFoundError);
   });
