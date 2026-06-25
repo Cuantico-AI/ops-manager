@@ -10,6 +10,14 @@ import { NotFoundError } from '../../../src/lib/errors.js';
 vi.mock('../../../src/lib/db/client.js', () => ({
   query: vi.fn(),
 }));
+vi.mock('../../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    accounts: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+  },
+}));
 
 const accountId = '00000000-0000-0000-0000-000000000001';
 const jobId = '00000000-0000-0000-0000-000000000010';
@@ -82,19 +90,17 @@ describe('listPromptOpsReviewsForAccount', () => {
   });
 
   it('resolves an account and filters to blocked reviews when requested', async () => {
-    vi.mocked(query)
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: accountId,
-            name: 'Complete Lending',
-            status: 'active',
-            ghl_location_id: 'loc_123',
-            ghl_pit_token_ref: null,
-          },
-        ],
-      } as never)
-      .mockResolvedValueOnce({ rows: [reviewRow] } as never);
+    const { prisma } = await import('../../../src/lib/db/prisma.js');
+    vi.mocked(prisma.accounts.findMany).mockResolvedValueOnce([
+      {
+        id: accountId,
+        name: 'Complete Lending',
+        status: 'active',
+        ghl_location_id: 'loc_123',
+        ghl_pit_token_ref: null,
+      },
+    ] as never);
+    vi.mocked(query).mockResolvedValueOnce({ rows: [reviewRow] } as never);
 
     const output = await listPromptOpsReviewsForAccount({
       accountQuery: 'Complete',
@@ -104,7 +110,7 @@ describe('listPromptOpsReviewsForAccount', () => {
 
     expect(output.accountName).toBe('Complete Lending');
     expect(output.reviews[0]?.blocked).toBe(true);
-    expect(vi.mocked(query).mock.calls[1]?.[0]).toContain('por.blocked = TRUE');
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain('por.blocked = TRUE');
   });
 });
 

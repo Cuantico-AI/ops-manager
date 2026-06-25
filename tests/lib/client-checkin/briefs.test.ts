@@ -11,6 +11,15 @@ vi.mock('../../../src/lib/db/client.js', () => ({
   query: vi.fn(),
 }));
 
+vi.mock('../../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    accounts: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+  },
+}));
+
 const accountId = '00000000-0000-0000-0000-000000000001';
 const jobId = '00000000-0000-0000-0000-000000000010';
 const briefId = '00000000-0000-0000-0000-000000000200';
@@ -104,19 +113,17 @@ describe('listClientCheckinBriefsForAccount', () => {
   });
 
   it('resolves an account and returns recent persisted briefs', async () => {
-    vi.mocked(query)
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: accountId,
-            name: 'Complete Lending',
-            status: 'active',
-            ghl_location_id: 'loc_123',
-            ghl_pit_token_ref: null,
-          },
-        ],
-      } as never)
-      .mockResolvedValueOnce({ rows: [briefRow] } as never);
+    const { prisma } = await import('../../../src/lib/db/prisma.js');
+    vi.mocked(prisma.accounts.findMany).mockResolvedValueOnce([
+      {
+        id: accountId,
+        name: 'Complete Lending',
+        status: 'active',
+        ghl_location_id: 'loc_123',
+        ghl_pit_token_ref: null,
+      },
+    ] as never);
+    vi.mocked(query).mockResolvedValueOnce({ rows: [briefRow] } as never);
 
     const output = await listClientCheckinBriefsForAccount({
       accountQuery: 'Complete',
@@ -125,7 +132,7 @@ describe('listClientCheckinBriefsForAccount', () => {
 
     expect(output.accountName).toBe('Complete Lending');
     expect(output.briefs[0]?.status).toBe('watch');
-    expect(vi.mocked(query).mock.calls[1]?.[0]).toContain('FROM client_checkin_briefs ccb');
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain('FROM client_checkin_briefs ccb');
   });
 });
 
