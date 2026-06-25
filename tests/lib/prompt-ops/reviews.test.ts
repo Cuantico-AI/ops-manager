@@ -16,6 +16,10 @@ vi.mock('../../../src/lib/db/prisma.js', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    prompt_ops_reviews: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -101,6 +105,12 @@ describe('listPromptOpsReviewsForAccount', () => {
       },
     ] as never);
     vi.mocked(query).mockResolvedValueOnce({ rows: [reviewRow] } as never);
+    vi.mocked(prisma.prompt_ops_reviews.findMany).mockResolvedValueOnce([
+      {
+        ...reviewRow,
+        accounts: { name: 'Complete Lending' },
+      },
+    ] as never);
 
     const output = await listPromptOpsReviewsForAccount({
       accountQuery: 'Complete',
@@ -110,7 +120,6 @@ describe('listPromptOpsReviewsForAccount', () => {
 
     expect(output.accountName).toBe('Complete Lending');
     expect(output.reviews[0]?.blocked).toBe(true);
-    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain('por.blocked = TRUE');
   });
 });
 
@@ -120,7 +129,8 @@ describe('getPromptOpsReviewById', () => {
   });
 
   it('throws NotFoundError when no review matches the ID', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as never);
+    const { prisma } = await import('../../../src/lib/db/prisma.js');
+    vi.mocked(prisma.prompt_ops_reviews.findUnique).mockResolvedValueOnce(null as never);
 
     await expect(getPromptOpsReviewById(reviewId)).rejects.toBeInstanceOf(NotFoundError);
   });

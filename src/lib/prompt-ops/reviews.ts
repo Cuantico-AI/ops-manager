@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { resolveAccountInput } from '../accounts/resolve-account-input.js';
+import { prisma } from '../db/prisma.js';
 import { query } from '../db/client.js';
 import { NotFoundError } from '../errors.js';
 import {
@@ -120,48 +121,47 @@ export async function listPromptOpsReviewsForAccount(
 ): Promise<ListPromptOpsReviewsOutput> {
   const account = await resolveAccountInput(input);
   const limit = normalizePromptOpsHistoryLimit(input.limit);
-  const clauses = ['por.account_id = $1'];
-  const params: unknown[] = [account.id, limit];
 
-  if (input.blockedOnly) {
-    clauses.push('por.blocked = TRUE');
-  }
-
-  const { rows } = await query<PromptOpsReviewRow>(
-    `SELECT por.*, a.name AS account_name
-     FROM prompt_ops_reviews por
-     JOIN accounts a ON a.id = por.account_id
-     WHERE ${clauses.join(' AND ')}
-     ORDER BY por.reviewed_at DESC
-     LIMIT $2`,
-    params,
-  );
+  const rows = await prisma.prompt_ops_reviews.findMany({
+    where: {
+      account_id: account.id,
+      ...(input.blockedOnly ? { blocked: true } : {}),
+    },
+    include: { accounts: { select: { name: true } } },
+    orderBy: { reviewed_at: 'desc' },
+    take: limit,
+  });
 
   return {
     accountId: account.id,
     accountName: account.name,
     limit,
     blockedOnly: input.blockedOnly === true,
-    reviews: rows.map(mapPromptOpsReviewRow),
+    reviews: rows.map((row) =>
+      mapPromptOpsReviewRow({
+        ...row,
+        account_name: row.accounts.name,
+        risk_level: row.risk_level as PromptOpsReviewRow['risk_level'],
+      }),
+    ),
   };
 }
 
 export async function getPromptOpsReviewById(id: string): Promise<PromptOpsReviewRecord> {
-  const { rows } = await query<PromptOpsReviewRow>(
-    `SELECT por.*, a.name AS account_name
-     FROM prompt_ops_reviews por
-     JOIN accounts a ON a.id = por.account_id
-     WHERE por.id = $1
-     LIMIT 1`,
-    [id.trim()],
-  );
+  const row = await prisma.prompt_ops_reviews.findUnique({
+    where: { id: id.trim() },
+    include: { accounts: { select: { name: true } } },
+  });
 
-  const row = rows[0];
   if (!row) {
     throw new NotFoundError(`No Prompt Ops review found for ID "${id}"`);
   }
 
-  return mapPromptOpsReviewRow(row);
+  return mapPromptOpsReviewRow({
+    ...row,
+    account_name: row.accounts.name,
+    risk_level: row.risk_level as PromptOpsReviewRow['risk_level'],
+  });
 }
 
 export function normalizePromptOpsHistoryLimit(limit: number | undefined): number {
