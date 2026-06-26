@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isClientCheckinFleetSummaryEnabled } from '../../src/jobs/client-checkin-fleet-summary.js';
 import type { ClientCheckinFleetSummary } from '../../src/lib/client-checkin/fleet-summary.js';
 
+vi.mock('../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    jobs: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
 const baseSummary: ClientCheckinFleetSummary = {
   sinceHours: 168,
   since: '2026-05-16T12:00:00.000Z',
@@ -64,14 +73,6 @@ describe('runClientCheckinFleetSummary', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const summaryExecute = vi.fn().mockResolvedValue(baseSummary);
     const postExecute = vi.fn().mockResolvedValue({ ts: '1234.5678' });

@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isClientCheckinFleetSweepEnabled } from '../../src/jobs/client-checkin-fleet-sweep.js';
 import type { GenerateClientCheckinBriefOutput } from '../../src/skills/client-checkin/generate-brief.js';
 
+vi.mock('../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    jobs: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
 const accountId = '11111111-1111-4111-8111-111111111111';
 
 afterEach(() => {
@@ -73,14 +82,6 @@ describe('runClientCheckinFleetSweep', () => {
       return Promise.resolve({ rows: [] });
     });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const generateExecute = vi.fn().mockResolvedValue(makeBrief());
     const registry = {

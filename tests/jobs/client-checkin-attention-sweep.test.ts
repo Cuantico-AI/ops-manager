@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isClientCheckinAttentionSweepEnabled } from '../../src/jobs/client-checkin-attention-sweep.js';
 import type { ClientCheckinAttentionSweepSummary } from '../../src/lib/client-checkin/attention-sweep.js';
 
+vi.mock('../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    jobs: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
 const baseSummary: ClientCheckinAttentionSweepSummary = {
   sinceHours: 24,
   since: '2026-05-22T12:00:00.000Z',
@@ -58,14 +67,6 @@ describe('runClientCheckinAttentionSweep', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const executeSweep = vi.fn().mockResolvedValue({
       ...baseSummary,
