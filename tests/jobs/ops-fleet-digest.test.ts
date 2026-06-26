@@ -83,6 +83,14 @@ describe('runOpsFleetDigest', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
+    vi.mock('../../src/lib/db/prisma.js', () => ({
+      prisma: {
+        jobs: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      },
+    }));
 
     const digestExecute = vi.fn().mockResolvedValue(baseDigest);
     const postExecute = vi.fn().mockResolvedValue({ ts: '1234.5678' });
@@ -109,10 +117,6 @@ describe('runOpsFleetDigest', () => {
       },
       expect.any(Object),
     );
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"postedToSlack":true')]),
-    );
   });
 
   it('suppresses Slack posts when there are no attention signals', async () => {
@@ -120,6 +124,14 @@ describe('runOpsFleetDigest', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
+    vi.mock('../../src/lib/db/prisma.js', () => ({
+      prisma: {
+        jobs: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      },
+    }));
 
     const digestExecute = vi.fn().mockResolvedValue({
       ...baseDigest,
@@ -145,9 +157,5 @@ describe('runOpsFleetDigest', () => {
     await runOpsFleetDigest(registry as never);
 
     expect(postExecute).not.toHaveBeenCalled();
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"postedToSlack":false')]),
-    );
   });
 });

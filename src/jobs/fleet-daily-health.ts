@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
-import { query } from '../lib/db/client.js';
+import { prisma } from '../lib/db/prisma.js';
 import {
   formatFleetDailyHealthOverview,
   type FleetDailyHealthChecks,
@@ -45,18 +45,17 @@ export async function runFleetDailyHealth(registry: SkillRegistry): Promise<void
 
   log.info('Fleet daily health job starting');
 
-  await query(
-    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [
-      jobId,
-      'system',
-      'scheduled',
-      JSON.stringify({ name: 'fleet-daily-health' }),
-      'running',
-      JSON.stringify({ includeInactive: false }),
-    ],
-  );
+  await prisma.jobs.create({
+    data: {
+      id: jobId,
+      agent_id: 'system',
+      trigger_type: 'scheduled',
+      trigger_payload: JSON.stringify({ name: 'fleet-daily-health' }),
+      status: 'running',
+      input: JSON.stringify({ includeInactive: false }),
+      started_at: new Date(),
+    },
+  });
 
   const ctx: SkillContext = {
     jobId,
@@ -106,16 +105,19 @@ export async function runFleetDailyHealth(registry: SkillRegistry): Promise<void
       ctx,
     );
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify({
-        ghl: checks.ghl.summary,
-        assistable: checks.assistable.summary,
-        n8n: checks.n8n.summary,
-        slackThreadTs: parent.ts,
-      }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify({
+          ghl: checks.ghl.summary,
+          assistable: checks.assistable.summary,
+          n8n: checks.n8n.summary,
+          slackThreadTs: parent.ts,
+        }),
+        completed_at: new Date(),
+      },
+    });
 
     log.info(
       {
@@ -131,11 +133,14 @@ export async function runFleetDailyHealth(registry: SkillRegistry): Promise<void
       name: err instanceof Error ? err.name : 'Error',
     };
 
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify(errorPayload),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify(errorPayload),
+        completed_at: new Date(),
+      },
+    });
 
     log.error({ err }, 'Fleet daily health job failed');
     throw err;

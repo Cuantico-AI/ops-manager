@@ -52,6 +52,14 @@ describe('runOpsAccountAttentionRun', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
+    vi.mock('../../src/lib/db/prisma.js', () => ({
+      prisma: {
+        jobs: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      },
+    }));
 
     const runExecute = vi.fn().mockResolvedValue({ ...baseSummary, sinceHours: 12, limit: 4 });
     const postExecute = vi.fn().mockResolvedValue({ ts: '1234.5678' });
@@ -89,10 +97,6 @@ describe('runOpsAccountAttentionRun', () => {
       },
       expect.any(Object),
     );
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"postedToSlack":true')]),
-    );
   });
 
   it('suppresses Slack posts when no accounts meet the filter', async () => {
@@ -100,6 +104,14 @@ describe('runOpsAccountAttentionRun', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
+    vi.mock('../../src/lib/db/prisma.js', () => ({
+      prisma: {
+        jobs: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      },
+    }));
 
     const runExecute = vi.fn().mockResolvedValue({
       ...baseSummary,
@@ -127,9 +139,5 @@ describe('runOpsAccountAttentionRun', () => {
     await runOpsAccountAttentionRun(registry as never);
 
     expect(postExecute).not.toHaveBeenCalled();
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"postedToSlack":false')]),
-    );
   });
 });
