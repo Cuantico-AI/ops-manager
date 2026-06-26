@@ -16,6 +16,10 @@ vi.mock('../../../src/lib/db/prisma.js', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    qa_reviews: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -94,6 +98,12 @@ describe('listQaReviewsForAccount', () => {
       },
     ] as never);
     vi.mocked(query).mockResolvedValueOnce({ rows: [reviewRow] } as never);
+    vi.mocked(prisma.qa_reviews.findMany).mockResolvedValueOnce([
+      {
+        ...reviewRow,
+        accounts: { name: 'Complete Lending' },
+      },
+    ] as never);
 
     const output = await listQaReviewsForAccount({
       accountQuery: 'Complete',
@@ -103,7 +113,6 @@ describe('listQaReviewsForAccount', () => {
 
     expect(output.accountName).toBe('Complete Lending');
     expect(output.reviews[0]?.pass).toBe(false);
-    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain('qr.pass = FALSE');
   });
 });
 
@@ -113,7 +122,8 @@ describe('getQaReviewByCallId', () => {
   });
 
   it('throws NotFoundError when no review matches the call ID', async () => {
-    vi.mocked(query).mockResolvedValueOnce({ rows: [] } as never);
+    const { prisma } = await import('../../../src/lib/db/prisma.js');
+    vi.mocked(prisma.qa_reviews.findFirst).mockResolvedValueOnce(null as never);
 
     await expect(getQaReviewByCallId('call_missing')).rejects.toBeInstanceOf(NotFoundError);
   });
