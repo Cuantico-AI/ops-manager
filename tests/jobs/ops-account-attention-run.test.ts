@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isOpsAccountAttentionRunEnabled } from '../../src/jobs/ops-account-attention-run.js';
 import type { OpsAccountAttentionRunSummary } from '../../src/lib/ops/account-attention-run.js';
 
+vi.mock('../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    jobs: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
 const baseSummary: OpsAccountAttentionRunSummary = {
   sinceHours: 24,
   since: '2026-05-22T12:00:00.000Z',
@@ -52,14 +61,6 @@ describe('runOpsAccountAttentionRun', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const runExecute = vi.fn().mockResolvedValue({ ...baseSummary, sinceHours: 12, limit: 4 });
     const postExecute = vi.fn().mockResolvedValue({ ts: '1234.5678' });
@@ -104,14 +105,6 @@ describe('runOpsAccountAttentionRun', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const runExecute = vi.fn().mockResolvedValue({
       ...baseSummary,

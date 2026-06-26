@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isOpsFleetDigestEnabled } from '../../src/jobs/ops-fleet-digest.js';
 import type { OpsFleetDigestSummary } from '../../src/lib/ops/fleet-digest.js';
 
+vi.mock('../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    jobs: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
 const baseDigest: OpsFleetDigestSummary = {
   sinceHours: 24,
   since: '2026-05-22T12:00:00.000Z',
@@ -83,14 +92,6 @@ describe('runOpsFleetDigest', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const digestExecute = vi.fn().mockResolvedValue(baseDigest);
     const postExecute = vi.fn().mockResolvedValue({ ts: '1234.5678' });
@@ -124,14 +125,6 @@ describe('runOpsFleetDigest', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
-    vi.mock('../../src/lib/db/prisma.js', () => ({
-      prisma: {
-        jobs: {
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-      },
-    }));
 
     const digestExecute = vi.fn().mockResolvedValue({
       ...baseDigest,

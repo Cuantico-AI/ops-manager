@@ -3,7 +3,7 @@ import { resolveChannel } from '../lib/slack/channel.js';
 import type { Worker } from 'bullmq';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
-import { query } from '../lib/db/client.js';
+import { prisma } from '../lib/db/prisma.js'
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
 import { type AssistablePostCallPayload, resolveCallType } from '../lib/qa/assistable-post-call.js';
@@ -86,29 +86,28 @@ export async function runQaAutoReview(
     'QA auto-review starting',
   );
 
-  await query(
-    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at, account_id)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
-    [
-      jobId,
-      'qa-review',
-      'webhook',
-      JSON.stringify({
+  await prisma.jobs.create({
+    data: {
+      id: jobId,
+      agent_id: 'qa-review',
+      trigger_type: 'webhook',
+      trigger_payload: JSON.stringify({
         source: 'assistable.post-call',
         callId: data.payload.call_id,
         trigger: data.decision.trigger,
       }),
-      'running',
-      JSON.stringify({
+      status: 'running',
+      input: JSON.stringify({
         accountId: account.id,
         callId: data.payload.call_id,
         trigger: data.decision.trigger,
         transcriptChars: transcript.length,
         userSentiment: data.payload.user_sentiment,
       }),
-      account.id,
-    ],
-  );
+      started_at: new Date(),
+      account_id: account.id,
+    },
+  });
 
   const ctx: SkillContext = {
     jobId,
@@ -187,33 +186,39 @@ export async function runQaAutoReview(
       );
     }
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify({
-        callId: data.payload.call_id,
-        trigger: data.decision.trigger,
-        score: output.score,
-        pass: output.pass,
-        modelUsed: output.modelUsed,
-        escalated,
-        qaReviewId: persistedReview.id,
-        findingCount: output.findings.length,
-        summary: output.summary,
-        findings: output.findings,
-      }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify({
+          callId: data.payload.call_id,
+          trigger: data.decision.trigger,
+          score: output.score,
+          pass: output.pass,
+          modelUsed: output.modelUsed,
+          escalated,
+          qaReviewId: persistedReview.id,
+          findingCount: output.findings.length,
+          summary: output.summary,
+          findings: output.findings,
+        }),
+        completed_at: new Date(),
+      },
+    });
 
     return output;
   } catch (err) {
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify({
-        message: err instanceof Error ? err.message : String(err),
-        name: err instanceof Error ? err.name : 'Error',
-      }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify({
+          message: err instanceof Error ? err.message : String(err),
+          name: err instanceof Error ? err.name : 'Error',
+        }),
+        completed_at: new Date(),
+      },
+    });
     throw err;
   }
 }

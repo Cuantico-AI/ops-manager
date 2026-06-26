@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
-import { query } from '../lib/db/client.js';
+import { prisma } from '../lib/db/prisma.js'
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
 import { formatQaFleetSummaryOutput } from '../skills/qa/list-fleet-failures.js';
@@ -36,18 +36,17 @@ export async function runQaFleetSummary(registry: SkillRegistry): Promise<void> 
 
   log.info({ sinceHours }, 'QA fleet summary job starting');
 
-  await query(
-    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [
-      jobId,
-      'qa-review',
-      'scheduled',
-      JSON.stringify({ name: 'qa-fleet-summary' }),
-      'running',
-      JSON.stringify({ sinceHours }),
-    ],
-  );
+  await prisma.jobs.create({
+    data: {
+      id: jobId,
+      agent_id: 'qa-review',
+      trigger_type: 'scheduled',
+      trigger_payload: JSON.stringify({ name: 'qa-fleet-summary' }),
+      status: 'running',
+      input: JSON.stringify({ sinceHours }),
+      started_at: new Date(),
+    },
+  });
 
   const ctx: SkillContext = {
     jobId,
@@ -85,18 +84,21 @@ export async function runQaFleetSummary(registry: SkillRegistry): Promise<void> 
       slackTs = post.ts;
     }
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify({
-        sinceHours: output.sinceHours,
-        totalReviews: output.totalReviews,
-        failedReviews: output.failedReviews,
-        passRate: output.passRate,
-        postedToSlack: slackTs !== undefined,
-        slackTs,
-      }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify({
+          sinceHours: output.sinceHours,
+          totalReviews: output.totalReviews,
+          failedReviews: output.failedReviews,
+          passRate: output.passRate,
+          postedToSlack: slackTs !== undefined,
+          slackTs,
+        }),
+        completed_at: new Date(),
+      },
+    });
 
     log.info(
       {
@@ -113,11 +115,14 @@ export async function runQaFleetSummary(registry: SkillRegistry): Promise<void> 
       name: err instanceof Error ? err.name : 'Error',
     };
 
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify(errorPayload),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify(errorPayload),
+        completed_at: new Date(),
+      },
+    });
 
     log.error({ err }, 'QA fleet summary job failed');
     throw err;

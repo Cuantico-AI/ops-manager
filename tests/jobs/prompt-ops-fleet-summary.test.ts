@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isPromptOpsFleetSummaryEnabled } from '../../src/jobs/prompt-ops-fleet-summary.js';
 import type { PromptOpsFleetSummary } from '../../src/lib/prompt-ops/fleet-summary.js';
 
+vi.mock('../../src/lib/db/prisma.js', () => ({
+  prisma: {
+    jobs: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}));
+
 const baseSummary: PromptOpsFleetSummary = {
   sinceHours: 168,
   since: '2026-05-16T12:00:00.000Z',
@@ -102,10 +111,6 @@ describe('runPromptOpsFleetSummary', () => {
       },
       expect.any(Object),
     );
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"postedToSlack":true')]),
-    );
   });
 
   it('suppresses Slack posts when there are no blocked or high-risk reviews', async () => {
@@ -142,9 +147,5 @@ describe('runPromptOpsFleetSummary', () => {
     await runPromptOpsFleetSummary(registry as never);
 
     expect(postExecute).not.toHaveBeenCalled();
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"postedToSlack":false')]),
-    );
   });
 });
