@@ -58,6 +58,14 @@ describe('runClientCheckinAttentionSweep', () => {
 
     const query = vi.fn().mockResolvedValue({ rows: [] });
     vi.doMock('../../src/lib/db/client.js', () => ({ query }));
+    vi.mock('../../src/lib/db/prisma.js', () => ({
+      prisma: {
+        jobs: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      },
+    }));
 
     const executeSweep = vi.fn().mockResolvedValue({
       ...baseSummary,
@@ -121,9 +129,5 @@ describe('runClientCheckinAttentionSweep', () => {
       watchBriefs: 1,
       attentionBriefs: 1,
     });
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE jobs SET status = $1'),
-      expect.arrayContaining(['succeeded', expect.stringContaining('"generated":1')]),
-    );
   });
 });

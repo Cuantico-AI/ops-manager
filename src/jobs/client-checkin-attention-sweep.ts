@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
-import { query } from '../lib/db/client.js';
+import { prisma } from '../lib/db/prisma.js';
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
 import {
@@ -103,18 +103,17 @@ export async function runClientCheckinAttentionSweep(
     'Client check-in attention sweep job starting',
   );
 
-  await query(
-    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [
-      jobId,
-      'client-checkin',
-      triggerType,
-      JSON.stringify(triggerPayload),
-      'running',
-      JSON.stringify(input),
-    ],
-  );
+  await prisma.jobs.create({
+    data: {
+      id: jobId,
+      agent_id: 'client-checkin',
+      trigger_type: triggerType,
+      trigger_payload: JSON.stringify(triggerPayload),
+      status: 'running',
+      input: JSON.stringify(input),
+      started_at: new Date(),
+    },
+  });
 
   const ctx: SkillContext = {
     jobId,
@@ -140,28 +139,31 @@ export async function runClientCheckinAttentionSweep(
         ),
     });
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify({
-        sinceHours: summary.sinceHours,
-        minSignals: summary.minSignals,
-        minHours: summary.minHours,
-        limit: summary.limit,
-        concurrency: summary.concurrency,
-        fleetTotalAttentionSignals: summary.fleetTotalAttentionSignals,
-        fleetAccountsWithAttention: summary.fleetAccountsWithAttention,
-        totalCandidates: summary.totalCandidates,
-        generated: summary.generated,
-        skippedRecent: summary.skippedRecent,
-        failed: summary.failed,
-        attentionBriefs: summary.attentionBriefs,
-        healthyBriefs: summary.healthyBriefs,
-        watchBriefs: summary.watchBriefs,
-        atRiskBriefs: summary.atRiskBriefs,
-        results: summary.results,
-      }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify({
+          sinceHours: summary.sinceHours,
+          minSignals: summary.minSignals,
+          minHours: summary.minHours,
+          limit: summary.limit,
+          concurrency: summary.concurrency,
+          fleetTotalAttentionSignals: summary.fleetTotalAttentionSignals,
+          fleetAccountsWithAttention: summary.fleetAccountsWithAttention,
+          totalCandidates: summary.totalCandidates,
+          generated: summary.generated,
+          skippedRecent: summary.skippedRecent,
+          failed: summary.failed,
+          attentionBriefs: summary.attentionBriefs,
+          healthyBriefs: summary.healthyBriefs,
+          watchBriefs: summary.watchBriefs,
+          atRiskBriefs: summary.atRiskBriefs,
+          results: summary.results,
+        }),
+        completed_at: new Date(),
+      },
+    });
 
     log.info(
       {
@@ -181,11 +183,14 @@ export async function runClientCheckinAttentionSweep(
       name: err instanceof Error ? err.name : 'Error',
     };
 
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify(errorPayload),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify(errorPayload),
+        completed_at: new Date(),
+      },
+    });
 
     log.error({ err }, 'Client check-in attention sweep job failed');
     throw err;
