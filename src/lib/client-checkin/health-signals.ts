@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { query } from '../db/client.js';
+import { prisma } from '../db/prisma.js';
 import { resolveAccountInput, type AccountLookupInput } from '../accounts/resolve-account-input.js';
 
 export const clientCheckinSignalsSchema = z.object({
@@ -54,44 +54,49 @@ export async function fetchClientCheckinSignals(
   input: AccountLookupInput,
 ): Promise<ClientCheckinSignals> {
   const account = await resolveAccountInput(input);
-  const { rows } = await query<AccountHealthRow>(
-    `SELECT id,
-            name,
-            status,
-            ghl_location_id,
-            ghl_pit_token_ref,
-            assistable_subaccount_id,
-            n8n_workflow_ids,
-            ghl_token_status,
-            ghl_token_checked_at,
-            assistable_oauth_status,
-            assistable_oauth_checked_at,
-            n8n_workflow_status,
-            n8n_workflow_checked_at,
-            metadata
-     FROM accounts
-     WHERE id = $1
-     LIMIT 1`,
-    [account.id],
-  );
+
+  const row = await prisma.accounts.findUnique({
+    where: { id: account.id },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      ghl_location_id: true,
+      ghl_pit_token_ref: true,
+      assistable_subaccount_id: true,
+      n8n_workflow_ids: true,
+      ghl_token_status: true,
+      ghl_token_checked_at: true,
+      assistable_oauth_status: true,
+      assistable_oauth_checked_at: true,
+      n8n_workflow_status: true,
+      n8n_workflow_checked_at: true,
+      metadata: true,
+    },
+  });
 
   return buildClientCheckinSignals(
-    rows[0] ?? {
-      id: account.id,
-      name: account.name,
-      status: account.status,
-      ghl_location_id: account.ghlLocationId,
-      ghl_pit_token_ref: account.ghlPitTokenRef,
-      assistable_subaccount_id: null,
-      n8n_workflow_ids: [],
-      ghl_token_status: null,
-      ghl_token_checked_at: null,
-      assistable_oauth_status: null,
-      assistable_oauth_checked_at: null,
-      n8n_workflow_status: null,
-      n8n_workflow_checked_at: null,
-      metadata: null,
-    },
+    row
+      ? {
+        ...row,
+        metadata: row.metadata as Record<string, unknown> | null,
+      }
+      : {
+        id: account.id,
+        name: account.name,
+        status: account.status,
+        ghl_location_id: account.ghlLocationId,
+        ghl_pit_token_ref: account.ghlPitTokenRef,
+        assistable_subaccount_id: null,
+        n8n_workflow_ids: [],
+        ghl_token_status: null,
+        ghl_token_checked_at: null,
+        assistable_oauth_status: null,
+        assistable_oauth_checked_at: null,
+        n8n_workflow_status: null,
+        n8n_workflow_checked_at: null,
+        metadata: null,
+      },
   );
 }
 

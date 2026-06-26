@@ -1,25 +1,29 @@
-import { query } from '../db/client.js';
+import { prisma } from '../db/prisma.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import type { ResolvedAccount } from '../accounts/resolve-account.js';
 
 export async function resolveAccountByLocationId(locationId: string): Promise<ResolvedAccount> {
-  const { rows } = await query<{
-    id: string;
-    name: string;
-    status: string;
-    ghl_location_id: string | null;
-    ghl_pit_token_ref: string | null;
-  }>(
-    `SELECT id, name, status, ghl_location_id, ghl_pit_token_ref
-     FROM accounts
-     WHERE ghl_location_id = $1 OR assistable_subaccount_id = $1
-     ORDER BY name ASC`,
-    [locationId.trim()],
-  );
+  const rows = await prisma.accounts.findMany({
+    where: {
+      OR: [
+        { ghl_location_id: locationId.trim() },
+        { assistable_subaccount_id: locationId.trim() },
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      ghl_location_id: true,
+      ghl_pit_token_ref: true,
+    },
+    orderBy: { name: 'asc' },
+  });
 
   if (rows.length === 0) {
     throw new NotFoundError(`No account matched Assistable location ID "${locationId}"`);
   }
+
   if (rows.length > 1) {
     const names = rows.map((row) => row.name).join(', ');
     throw new ValidationError(
