@@ -1,3 +1,4 @@
+import { prisma } from '../db/prisma.js';
 import { query } from '../db/client.js';
 import type { AssistableOAuthStatus } from '../assistable/client.js';
 
@@ -58,37 +59,23 @@ export async function listAccountsForAssistableOAuthCheck(opts: {
   accountQuery?: string;
   includeInactive?: boolean;
 }): Promise<AssistableAccountForOAuthCheck[]> {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
-
-  if (opts.accountId) {
-    params.push(opts.accountId);
-    clauses.push(`id = $${params.length}`);
-  }
-
-  if (opts.accountQuery) {
-    params.push(`%${opts.accountQuery}%`);
-    clauses.push(`name ILIKE $${params.length}`);
-  }
-
-  if (!opts.includeInactive) {
-    clauses.push("status = 'active'");
-  }
-
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const { rows } = await query<{
-    id: string;
-    name: string;
-    status: string;
-    assistable_subaccount_id: string | null;
-    ghl_location_id: string | null;
-  }>(
-    `SELECT id, name, status, assistable_subaccount_id, ghl_location_id
-     FROM accounts
-     ${where}
-     ORDER BY name ASC`,
-    params,
-  );
+  const rows = await prisma.accounts.findMany({
+    where: {
+      ...(opts.accountId ? { id: opts.accountId } : {}),
+      ...(opts.accountQuery
+        ? { name: { contains: opts.accountQuery, mode: 'insensitive' } }
+        : {}),
+      ...(!opts.includeInactive ? { status: 'active' } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      assistable_subaccount_id: true,
+      ghl_location_id: true,
+    },
+    orderBy: { name: 'asc' },
+  });
 
   return rows.map((row) => ({
     id: row.id,

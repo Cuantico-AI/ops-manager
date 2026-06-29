@@ -1,4 +1,5 @@
 import { resolveAccountInput } from '../accounts/resolve-account-input.js';
+import { prisma } from '../db/prisma.js';
 import { query } from '../db/client.js';
 import { NotFoundError } from '../errors.js';
 import {
@@ -128,48 +129,45 @@ export async function listQaReviewsForAccount(
 ): Promise<ListQaReviewsOutput> {
   const account = await resolveAccountInput(input);
   const limit = normalizeQaHistoryLimit(input.limit);
-  const clauses = ['qr.account_id = $1'];
-  const params: unknown[] = [account.id, limit];
 
-  if (input.failingOnly) {
-    clauses.push('qr.pass = FALSE');
-  }
-
-  const { rows } = await query<QaReviewRow>(
-    `SELECT qr.*, a.name AS account_name
-     FROM qa_reviews qr
-     JOIN accounts a ON a.id = qr.account_id
-     WHERE ${clauses.join(' AND ')}
-     ORDER BY qr.reviewed_at DESC
-     LIMIT $2`,
-    params,
-  );
+  const rows = await prisma.qa_reviews.findMany({
+    where: {
+      account_id: account.id,
+      ...(input.failingOnly ? { pass: false } : {}),
+    },
+    include: { accounts: { select: { name: true } } },
+    orderBy: { reviewed_at: 'desc' },
+    take: limit,
+  });
 
   return {
     accountId: account.id,
     accountName: account.name,
     limit,
     failingOnly: input.failingOnly === true,
-    reviews: rows.map(mapQaReviewRow),
+    reviews: rows.map((row) =>
+      mapQaReviewRow({
+        ...row,
+        account_name: row.accounts.name,
+      }),
+    ),
   };
 }
 
 export async function getQaReviewByCallId(callId: string): Promise<QaReviewRecord> {
-  const { rows } = await query<QaReviewRow>(
-    `SELECT qr.*, a.name AS account_name
-     FROM qa_reviews qr
-     JOIN accounts a ON a.id = qr.account_id
-     WHERE qr.call_id = $1
-     LIMIT 1`,
-    [callId.trim()],
-  );
+  const row = await prisma.qa_reviews.findFirst({
+    where: { call_id: callId.trim() },
+    include: { accounts: { select: { name: true } } },
+  });
 
-  const row = rows[0];
   if (!row) {
     throw new NotFoundError(`No QA review found for call ID "${callId}"`);
   }
 
-  return mapQaReviewRow(row);
+  return mapQaReviewRow({
+    ...row,
+    account_name: row.accounts.name,
+  });
 }
 
 export function normalizeQaHistoryLimit(limit: number | undefined): number {

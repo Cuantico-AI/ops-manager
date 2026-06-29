@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
-import { query } from '../lib/db/client.js';
+import { prisma } from '../lib/db/prisma.js';
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
 import { shouldPostIndividualHealthAlert } from './health-alerts.js';
@@ -30,21 +30,19 @@ export function getAssistableOAuthHealthCron(): string {
 export async function runAssistableOAuthHealth(registry: SkillRegistry): Promise<void> {
   const jobId = randomUUID();
   const log = childLogger({ jobId });
-
   log.info('Assistable OAuth health job starting');
 
-  await query(
-    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [
-      jobId,
-      'system',
-      'scheduled',
-      JSON.stringify({ name: 'assistable-oauth-health' }),
-      'running',
-      JSON.stringify({ includeInactive: false }),
-    ],
-  );
+  await prisma.jobs.create({
+    data: {
+      id: jobId,
+      agent_id: 'system',
+      trigger_type: 'scheduled',
+      trigger_payload: JSON.stringify({ name: 'assistable-oauth-health' }),
+      status: 'running',
+      input: JSON.stringify({ includeInactive: false }),
+      started_at: new Date(),
+    },
+  });
 
   const ctx: SkillContext = {
     jobId,
@@ -67,7 +65,10 @@ export async function runAssistableOAuthHealth(registry: SkillRegistry): Promise
     );
 
     for (const result of eligibleForRefresh) {
-      const refreshSkill = registry.get('assistable.refresh-oauth') as Skill<RefreshAssistableOAuthInput, RefreshAssistableOAuthOutput>;
+      const refreshSkill = registry.get('assistable.refresh-oauth') as Skill<
+        RefreshAssistableOAuthInput,
+        RefreshAssistableOAuthOutput
+      >;
       await refreshSkill.execute(
         refreshAssistableOAuthInputSchema.parse({ accountId: result.accountId }),
         ctx,
@@ -84,11 +85,14 @@ export async function runAssistableOAuthHealth(registry: SkillRegistry): Promise
       await postSkill.execute(postInput, ctx);
     }
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify({ summary: output.summary }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify({ summary: output.summary }),
+        completed_at: new Date(),
+      },
+    });
 
     log.info({ summary: output.summary }, 'Assistable OAuth health job succeeded');
   } catch (err) {
@@ -97,11 +101,14 @@ export async function runAssistableOAuthHealth(registry: SkillRegistry): Promise
       name: err instanceof Error ? err.name : 'Error',
     };
 
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify(errorPayload),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify(errorPayload),
+        completed_at: new Date(),
+      },
+    });
 
     log.error({ err }, 'Assistable OAuth health job failed');
     throw err;

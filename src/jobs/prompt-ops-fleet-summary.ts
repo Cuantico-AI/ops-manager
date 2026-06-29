@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveChannel } from '../lib/slack/channel.js';
 import { auditLogger } from '../lib/audit/log.js';
 import { approvalGate } from '../lib/approval/gate.js';
-import { query } from '../lib/db/client.js';
+import { prisma } from '../lib/db/prisma.js'
 import { childLogger } from '../lib/logger.js';
 import { llmClient } from '../lib/llm/client.js';
 import type {
@@ -39,18 +39,17 @@ export async function runPromptOpsFleetSummary(registry: SkillRegistry): Promise
 
   log.info({ sinceHours }, 'Prompt Ops fleet summary job starting');
 
-  await query(
-    `INSERT INTO jobs (id, agent_id, trigger_type, trigger_payload, status, input, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [
-      jobId,
-      'prompt-ops',
-      'scheduled',
-      JSON.stringify({ name: 'prompt-ops-fleet-summary' }),
-      'running',
-      JSON.stringify({ sinceHours }),
-    ],
-  );
+  await prisma.jobs.create({
+    data: {
+      id: jobId,
+      agent_id: 'prompt-ops',
+      trigger_type: 'scheduled',
+      trigger_payload: JSON.stringify({ name: 'prompt-ops-fleet-summary' }),
+      status: 'running',
+      input: JSON.stringify({ sinceHours }),
+      started_at: new Date(),
+    },
+  });
 
   const ctx: SkillContext = {
     jobId,
@@ -84,20 +83,23 @@ export async function runPromptOpsFleetSummary(registry: SkillRegistry): Promise
       slackTs = post.ts;
     }
 
-    await query(`UPDATE jobs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`, [
-      'succeeded',
-      JSON.stringify({
-        sinceHours: output.sinceHours,
-        totalReviews: output.totalReviews,
-        blockedReviews: output.blockedReviews,
-        highRiskReviews: output.highRiskReviews,
-        attentionReviews: output.attentionReviews,
-        attentionRate: output.attentionRate,
-        postedToSlack: slackTs !== undefined,
-        slackTs,
-      }),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'succeeded',
+        output: JSON.stringify({
+          sinceHours: output.sinceHours,
+          totalReviews: output.totalReviews,
+          blockedReviews: output.blockedReviews,
+          highRiskReviews: output.highRiskReviews,
+          attentionReviews: output.attentionReviews,
+          attentionRate: output.attentionRate,
+          postedToSlack: slackTs !== undefined,
+          slackTs,
+        }),
+        completed_at: new Date(),
+      },
+    });
 
     log.info(
       {
@@ -114,11 +116,14 @@ export async function runPromptOpsFleetSummary(registry: SkillRegistry): Promise
       name: err instanceof Error ? err.name : 'Error',
     };
 
-    await query(`UPDATE jobs SET status = $1, error = $2, completed_at = NOW() WHERE id = $3`, [
-      'failed',
-      JSON.stringify(errorPayload),
-      jobId,
-    ]);
+    await prisma.jobs.update({
+      where: { id: jobId },
+      data: {
+        status: 'failed',
+        error: JSON.stringify(errorPayload),
+        completed_at: new Date(),
+      },
+    });
 
     log.error({ err }, 'Prompt Ops fleet summary job failed');
     throw err;

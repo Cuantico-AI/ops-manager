@@ -8,7 +8,7 @@ import {
 } from '../../lib/accounts/assistable-oauth-health.js';
 import { resolveAccountInput } from '../../lib/accounts/resolve-account-input.js';
 import { wrapMutation } from '../../lib/audit/wrap-mutation.js';
-import { query } from '../../lib/db/client.js';
+import { prisma } from '../../lib/db/prisma.js';
 import { ExternalServiceError, NotFoundError, ValidationError } from '../../lib/errors.js';
 import {
   assistableClient,
@@ -248,8 +248,8 @@ export function formatRefreshAssistableOAuthOutput(output: RefreshAssistableOAut
   if (output.currentStatus !== 'connected') {
     lines.push(
       'OAuth is still not connected. Reset the connection manually in Assistable (Agency-Level Settings > Reset Connection), then run `/ops check-assistable ' +
-        output.accountName +
-        '`.',
+      output.accountName +
+      '`.',
     );
   }
 
@@ -257,12 +257,12 @@ export function formatRefreshAssistableOAuthOutput(output: RefreshAssistableOAut
 }
 
 async function readPreviousOAuthStatus(accountId: string): Promise<AccountAssistableOAuthStatus | null> {
-  const { rows } = await query<{ assistable_oauth_status: AccountAssistableOAuthStatus | null }>(
-    `SELECT assistable_oauth_status FROM accounts WHERE id = $1`,
-    [accountId],
-  );
+  const row = await prisma.accounts.findUnique({
+    where: { id: accountId },
+    select: { assistable_oauth_status: true },
+  });
 
-  return rows[0]?.assistable_oauth_status ?? null;
+  return (row?.assistable_oauth_status as AccountAssistableOAuthStatus | null) ?? null;
 }
 
 async function runManualReconnectGuide(
@@ -316,7 +316,7 @@ async function refreshViaApi(
     if (refresh.routeNotFound) {
       throw new ExternalServiceError(
         refresh.message ??
-          'Assistable OAuth refresh is not available via API. Reset the connection manually in the Assistable dashboard (Agency-Level Settings > Reset Connection).',
+        'Assistable OAuth refresh is not available via API. Reset the connection manually in the Assistable dashboard (Agency-Level Settings > Reset Connection).',
         'ASSISTABLE_REFRESH_ROUTE_NOT_FOUND',
       );
     }

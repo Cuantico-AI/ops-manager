@@ -1,3 +1,4 @@
+import { prisma } from '../db/prisma.js';
 import { query } from '../db/client.js';
 import { ApprovalExpiredError, NotFoundError, ValidationError } from '../errors.js';
 
@@ -28,91 +29,38 @@ export async function createApproval(input: {
   targetSummary: string;
   proposedAction: unknown;
 }): Promise<ApprovalRecord> {
-  const expiresAt = new Date(Date.now() + getApprovalExpiryHours() * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + getApprovalExpiryHours() * 60 * 60 * 1000);
 
-  const { rows } = await query<{
-    id: string;
-    job_id: string;
-    skill: string;
-    target_summary: string;
-    proposed_action: unknown;
-    status: ApprovalStatus;
-    requested_at: Date;
-    resolved_at: Date | null;
-    resolved_by: string | null;
-    slack_message_ts: string | null;
-    expires_at: Date;
-  }>(
-    `INSERT INTO approvals (
-       job_id, skill, target_summary, proposed_action, status, expires_at
-     )
-     VALUES ($1, $2, $3, $4, 'pending', $5)
-     RETURNING id, job_id, skill, target_summary, proposed_action, status,
-               requested_at, resolved_at, resolved_by, slack_message_ts, expires_at`,
-    [input.jobId, input.skill, input.targetSummary, JSON.stringify(input.proposedAction), expiresAt],
-  );
-
-  const row = rows[0];
-  if (!row) {
-    throw new Error('Failed to create approval record');
-  }
+  const row = await prisma.approvals.create({
+    data: {
+      job_id: input.jobId,
+      skill: input.skill,
+      target_summary: input.targetSummary,
+      proposed_action: JSON.stringify(input.proposedAction),
+      status: 'pending',
+      expires_at: expiresAt,
+    },
+  });
 
   return mapApprovalRow(row);
 }
 
 export async function findApprovedApprovalForJob(jobId: string): Promise<ApprovalRecord | null> {
-  const { rows } = await query<{
-    id: string;
-    job_id: string;
-    skill: string;
-    target_summary: string;
-    proposed_action: unknown;
-    status: ApprovalStatus;
-    requested_at: Date;
-    resolved_at: Date | null;
-    resolved_by: string | null;
-    slack_message_ts: string | null;
-    expires_at: Date;
-  }>(
-    `SELECT id, job_id, skill, target_summary, proposed_action, status,
-            requested_at, resolved_at, resolved_by, slack_message_ts, expires_at
-     FROM approvals
-     WHERE job_id = $1 AND status = 'approved'
-     ORDER BY resolved_at DESC NULLS LAST
-     LIMIT 1`,
-    [jobId],
-  );
+  const row = await prisma.approvals.findFirst({
+    where: { job_id: jobId, status: 'approved' },
+    orderBy: { resolved_at: { sort: 'desc', nulls: 'last' } },
+  });
 
-  return rows[0] ? mapApprovalRow(rows[0]) : null;
+  return row ? mapApprovalRow(row) : null;
 }
 
 export async function findPendingApprovalForJob(jobId: string): Promise<ApprovalRecord | null> {
-  const { rows } = await query<{
-    id: string;
-    job_id: string;
-    skill: string;
-    target_summary: string;
-    proposed_action: unknown;
-    status: ApprovalStatus;
-    requested_at: Date;
-    resolved_at: Date | null;
-    resolved_by: string | null;
-    slack_message_ts: string | null;
-    expires_at: Date;
-  }>(
-    `SELECT id, job_id, skill, target_summary, proposed_action, status,
-            requested_at, resolved_at, resolved_by, slack_message_ts, expires_at
-     FROM approvals
-     WHERE job_id = $1 AND status = 'pending'
-     ORDER BY requested_at DESC
-     LIMIT 1`,
-    [jobId],
-  );
+  const row = await prisma.approvals.findFirst({
+    where: { job_id: jobId, status: 'pending' },
+    orderBy: { requested_at: 'desc' },
+  });
 
-  const row = rows[0];
-  if (!row) {
-    return null;
-  }
+  if (!row) return null;
 
   const approval = mapApprovalRow(row);
   if (Date.parse(approval.expiresAt) <= Date.now()) {
@@ -124,28 +72,10 @@ export async function findPendingApprovalForJob(jobId: string): Promise<Approval
 }
 
 export async function getApprovalById(approvalId: string): Promise<ApprovalRecord> {
-  const { rows } = await query<{
-    id: string;
-    job_id: string;
-    skill: string;
-    target_summary: string;
-    proposed_action: unknown;
-    status: ApprovalStatus;
-    requested_at: Date;
-    resolved_at: Date | null;
-    resolved_by: string | null;
-    slack_message_ts: string | null;
-    expires_at: Date;
-  }>(
-    `SELECT id, job_id, skill, target_summary, proposed_action, status,
-            requested_at, resolved_at, resolved_by, slack_message_ts, expires_at
-     FROM approvals
-     WHERE id = $1
-     LIMIT 1`,
-    [approvalId],
-  );
+  const row = await prisma.approvals.findUnique({
+    where: { id: approvalId },
+  });
 
-  const row = rows[0];
   if (!row) {
     throw new NotFoundError(`Approval not found: ${approvalId}`);
   }
@@ -157,10 +87,10 @@ export async function setApprovalSlackMessageTs(
   approvalId: string,
   slackMessageTs: string,
 ): Promise<void> {
-  await query(`UPDATE approvals SET slack_message_ts = $1 WHERE id = $2`, [
-    slackMessageTs,
-    approvalId,
-  ]);
+  await prisma.approvals.update({
+    where: { id: approvalId },
+    data: { slack_message_ts: slackMessageTs },
+  });
 }
 
 export async function resolveApproval(
@@ -179,45 +109,26 @@ export async function resolveApproval(
     throw new ApprovalExpiredError(approvalId);
   }
 
-  const { rows } = await query<{
-    id: string;
-    job_id: string;
-    skill: string;
-    target_summary: string;
-    proposed_action: unknown;
-    status: ApprovalStatus;
-    requested_at: Date;
-    resolved_at: Date | null;
-    resolved_by: string | null;
-    slack_message_ts: string | null;
-    expires_at: Date;
-  }>(
-    `UPDATE approvals
-     SET status = $1,
-         resolved_at = NOW(),
-         resolved_by = $2
-     WHERE id = $3
-     RETURNING id, job_id, skill, target_summary, proposed_action, status,
-               requested_at, resolved_at, resolved_by, slack_message_ts, expires_at`,
-    [status, resolvedBy, approvalId],
-  );
-
-  const row = rows[0];
-  if (!row) {
-    throw new NotFoundError(`Approval not found: ${approvalId}`);
-  }
+  const row = await prisma.approvals.update({
+    where: { id: approvalId },
+    data: {
+      status,
+      resolved_at: new Date(),
+      resolved_by: resolvedBy,
+    },
+  });
 
   return mapApprovalRow(row);
 }
 
 export async function markApprovalExpired(approvalId: string): Promise<void> {
-  await query(
-    `UPDATE approvals
-     SET status = 'expired',
-         resolved_at = COALESCE(resolved_at, NOW())
-     WHERE id = $1 AND status = 'pending'`,
-    [approvalId],
-  );
+  await prisma.approvals.updateMany({
+    where: { id: approvalId, status: 'pending' },
+    data: {
+      status: 'expired',
+      resolved_at: new Date(),
+    },
+  });
 }
 
 export async function setJobStatus(jobId: string, status: string): Promise<void> {
@@ -240,20 +151,18 @@ export async function listRecentJobs(limit = 20): Promise<
     completedAt: string | null;
   }>
 > {
-  const { rows } = await query<{
-    id: string;
-    agent_id: string;
-    trigger_type: string;
-    status: string;
-    started_at: Date;
-    completed_at: Date | null;
-  }>(
-    `SELECT id, agent_id, trigger_type, status, started_at, completed_at
-     FROM jobs
-     ORDER BY started_at DESC
-     LIMIT $1`,
-    [limit],
-  );
+  const rows = await prisma.jobs.findMany({
+    select: {
+      id: true,
+      agent_id: true,
+      trigger_type: true,
+      status: true,
+      started_at: true,
+      completed_at: true,
+    },
+    orderBy: { started_at: 'desc' },
+    take: limit,
+  });
 
   return rows.map((row) => ({
     id: row.id,
@@ -271,7 +180,7 @@ function mapApprovalRow(row: {
   skill: string;
   target_summary: string;
   proposed_action: unknown;
-  status: ApprovalStatus;
+  status: string;
   requested_at: Date;
   resolved_at: Date | null;
   resolved_by: string | null;
@@ -287,7 +196,7 @@ function mapApprovalRow(row: {
       typeof row.proposed_action === 'string'
         ? JSON.parse(row.proposed_action)
         : row.proposed_action,
-    status: row.status,
+    status: row.status as ApprovalStatus,
     requestedAt: row.requested_at.toISOString(),
     resolvedAt: row.resolved_at?.toISOString() ?? null,
     resolvedBy: row.resolved_by,
